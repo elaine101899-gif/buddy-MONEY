@@ -353,6 +353,21 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 @media (max-width:640px){.mcal .ev{display:none}.dots{display:flex}.mcal-d{min-height:54px}}
 #printarea{display:none}
 @media print{@page{size:A4;margin:0}body>*:not(#printarea){display:none!important}body{background:#fff!important}#printarea{display:block}#printarea .pg{box-shadow:none}body::before{display:none}}
+/* 彈出視窗、卡片 */
+#modal{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:16px max(12px,env(safe-area-inset-left,0px))}
+#modal[hidden]{display:none!important}
+.mdl-bg{position:absolute;inset:0;background:rgba(30,26,38,.45)}
+.mdl{position:relative;width:min(560px,100%);max-height:calc(100dvh - 32px);overflow:auto;display:flex;flex-direction:column;gap:12px}
+.mdl-h{display:flex;justify-content:space-between;align-items:center;gap:10px}.mdl-h h2{font-size:19px;font-weight:900}
+.mdl-b{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px}
+.mdl-f{display:flex;gap:8px;align-items:center;flex-wrap:wrap;position:sticky;bottom:-18px;background:var(--card);padding:10px 0 4px}
+@media (max-width:640px){#modal{place-items:end center;padding:0}.mdl{width:100%;border-radius:22px 22px 0 0;max-height:92dvh;padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))}}
+.rlist{display:flex;flex-direction:column;gap:8px}
+.rcard{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:2px solid var(--line);background:var(--card);border-radius:14px;padding:10px 12px;font:inherit;color:var(--ink);cursor:pointer}
+.rcard:hover{background:var(--soft)} .rcard.off{opacity:.5}
+.rc-m{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.rc-m b{font-size:15.5px;overflow-wrap:anywhere}.rc-m>span{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.rc-r{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-family:var(--f-num);font-weight:800;white-space:nowrap}
+.rc-go{font-size:22px;color:var(--muted);flex:none}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 
@@ -382,7 +397,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 19:38</div>
+<div class="ver" id="ver">版本 115/11/24 19:49</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -873,6 +888,39 @@ function render(){
   if(S.tab==='opt'){ if(OPT.preview) renderPreview(); if(db&&OPT.assets===undefined) getAssets().then(()=>{ if(S.tab==='opt') softRender(); }); }
 }
 
+/* ═════════ 共用彈出視窗（填一填、按儲存） ═════════ */
+const MDL={cfg:null,confirm:false};
+function openModal(cfg){ MDL.cfg=cfg; MDL.confirm=false; drawModal(); }
+function closeModal(){ MDL.cfg=null; const m=$('modal'); if(m) m.hidden=true; document.body.style.overflow=''; }
+function drawModal(){
+  const c=MDL.cfg; let m=$('modal'); if(!m){ m=document.createElement('div'); m.id='modal'; document.body.appendChild(m); }
+  const v=c.value||{};
+  const fld=f=>{ const id='m-'+f.k, val=v[f.k]; const wide=f.wide?'style="grid-column:1/-1"':'';
+    if(f.type==='check') return `<label class="tk" style="grid-column:1/-1;font-weight:700"><input type="checkbox" id="${id}" ${val?'checked':''}><span class="tt">${f.label}</span></label>`;
+    if(f.type==='select') return `<div class="field" ${wide}><label for="${id}">${f.label}</label><select id="${id}">${f.options.map(o=>{ const [ov,ol]=Array.isArray(o)?o:[o,o]; return `<option value="${esc(ov)}" ${String(val)===String(ov)?'selected':''}>${esc(ol)}</option>`; }).join('')}</select></div>`;
+    return `<div class="field" ${wide}><label for="${id}">${f.label}</label><input id="${id}" type="${f.type||'text'}" ${f.step?`step="${f.step}"`:''} ${f.list?`list="${f.list}"`:''} value="${esc(val??'')}" placeholder="${esc(f.ph||'')}" ${f.type==='number'?'inputmode="decimal"':''}></div>`; };
+  m.innerHTML=`<div class="mdl-bg" data-mdl="close"></div><form class="mdl card" id="mdl-form" role="dialog" aria-modal="true" aria-labelledby="mdl-t">
+    <div class="mdl-h"><h2 id="mdl-t">${esc(c.title)}</h2><button type="button" class="x" data-mdl="close" aria-label="關閉">×</button></div>
+    ${c.note?`<div class="tip">${c.note}</div>`:''}
+    <div class="mdl-b">${c.fields.map(fld).join('')}</div>
+    <div class="mdl-f">
+      ${c.onDelete?(MDL.confirm?`<button type="button" class="btn danger" data-mdl="delyes">確定刪除</button>`:`<button type="button" class="btn ghost" data-mdl="del">刪除</button>`):''}
+      <span style="flex:1"></span>
+      <button type="button" class="btn ghost" data-mdl="close">取消</button>
+      <button type="submit" class="btn">${esc(c.saveText||'儲存')}</button>
+    </div></form>${c.datalist||''}`;
+  m.hidden=false; document.body.style.overflow='hidden';
+  setTimeout(()=>{ const f=m.querySelector('.mdl-b input:not([type=checkbox]),.mdl-b select'); if(f&&window.innerWidth>640) f.focus(); },30);
+}
+document.addEventListener('click',e=>{ const b=e.target.closest('[data-mdl]'); if(!b||!MDL.cfg) return; const a=b.dataset.mdl;
+  if(a==='close') closeModal(); else if(a==='del'){ MDL.confirm=true; drawModal(); } else if(a==='delyes'){ const c=MDL.cfg; closeModal(); c.onDelete(); } });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&MDL.cfg) closeModal(); });
+document.addEventListener('submit',e=>{ if(e.target.id!=='mdl-form') return; e.preventDefault(); const c=MDL.cfg; const out={};
+  c.fields.forEach(f=>{ const el=$('m-'+f.k); if(!el) return; out[f.k]=f.type==='check'?el.checked:f.type==='number'?(el.value===''?'':Number(el.value)):el.value.trim(); });
+  for(const f of c.fields) if(f.required&&!out[f.k]){ const el=$('m-'+f.k); if(el) el.focus(); toast(`請填「${f.label}」`); return; }
+  closeModal(); c.onSave(out); });
+function rowCard(act,attrs,title,sub,right,off){ return `<button class="rcard ${off?'off':''}" data-act="${act}" ${attrs}><span class="rc-m"><b>${title}</b>${sub?`<span>${sub}</span>`:''}</span>${right?`<span class="rc-r">${right}</span>`:''}<span class="rc-go" aria-hidden="true">›</span></button>`; }
+
 /* ═════════ 優化補助：填寫＋產生 PDF ═════════ */
 const CAPN='零壹貳參肆伍陸柒捌玖';
 function capNum(n){ // 0–9999 → 國字大寫
@@ -1070,16 +1118,10 @@ function viewOpt(){
       const rows=mo.rows.filter(r=>!r.skip);
       return `<div style="margin-top:16px"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px"><b style="font-size:15px">${mo.month} 月</b><span class="muted" style="font-size:13px">${rows.length} 人列入・實領合計 <span class="num">$${money(rows.reduce((a,r)=>a+rowA(r)-rowB(r),0))}</span></span>
         <button class="docbtn" data-act="o-addrow" data-mi="${mi}">＋ 新增一列</button>${mi>0&&!mo.rows.length&&d.months[mi-1].rows.length?`<button class="docbtn" data-act="o-copyprev" data-mi="${mi}">複製 ${d.months[mi-1].month} 月名單</button>`:''}</div>
-        <div class="tblwrap"><table class="ptbl"><thead><tr><th>列入</th><th>姓名</th><th>職稱</th><th>身分證字號</th><th>固定薪資</th><th>其他獎金津貼</th><th>勞保費</th><th>健保費</th><th>缺勤</th><th>其他扣項</th><th>實領</th><th>備註</th><th></th></tr></thead><tbody>
-        ${mo.rows.length?mo.rows.map((r,ri)=>`<tr class="${r.skip?'off':''}">
-          <td><input type="checkbox" id="o-in-${mi}-${ri}" data-row="skip" data-mi="${mi}" data-ri="${ri}" ${r.skip?'':'checked'} aria-label="列入清冊"></td>
-          ${['name','title','idno'].map(f=>`<td><input id="o-${f}-${mi}-${ri}" data-row="${f}" data-mi="${mi}" data-ri="${ri}" value="${esc(r[f]||'')}" style="width:${f==='idno'?'110px':f==='name'?'72px':'80px'}"></td>`).join('')}
-          ${['fixed','other','labor','health','absent','od'].map(f=>`<td><input id="o-${f}-${mi}-${ri}" class="num" type="number" data-row="${f}" data-mi="${mi}" data-ri="${ri}" value="${n0(r[f])||''}" style="width:${f==='fixed'?'78px':'64px'}"></td>`).join('')}
-          <td class="num" id="o-net-${mi}-${ri}">${money(rowA(r)-rowB(r))}</td>
-          <td><input id="o-note-${mi}-${ri}" data-row="note" data-mi="${mi}" data-ri="${ri}" value="${esc(r.note||'')}" style="width:90px"></td>
-          <td><button class="x" data-act="o-delrow" data-mi="${mi}" data-ri="${ri}" aria-label="刪除這一列" style="width:28px;height:28px">×</button></td></tr>`).join('')
-          :`<tr><td colspan="13" class="muted" style="text-align:left;padding:10px">還沒有資料，按「＋ 新增一列」開始填。</td></tr>`}
-        </tbody></table></div></div>`;}).join('')}
+        <div class="rlist">${mo.rows.length?mo.rows.map((r,ri)=>rowCard('o-edit',`data-mi="${mi}" data-ri="${ri}"`,`${esc(r.name||'（未填姓名）')}<span class="muted" style="font-weight:500">・${esc(r.title||'')}</span>`,
+          `固定 ${money(n0(r.fixed))}${n0(r.other)?`・其他 ${money(n0(r.other))}`:''}・勞 ${money(n0(r.labor))}・健 ${money(n0(r.health))}${n0(r.absent)?`・缺勤 ${money(n0(r.absent))}`:''}${r.note?`・${esc(r.note)}`:''}`,
+          r.skip?'<span class="chip when">不列入</span>':`<span>實領 $${money(rowA(r)-rowB(r))}</span>`, r.skip)).join('')
+          :`<div class="empty" style="padding:4px 0"><span>還沒有資料，按「＋ 新增一列」開始填。</span></div>`}</div></div>`;}).join('')}
   </section>`;
 
   const names=[...new Set(d.months.flatMap(m=>m.rows.filter(r=>!r.skip).map(r=>r.name)).filter(Boolean))];
@@ -1121,17 +1163,10 @@ function viewOpt(){
       <div class="hl"><span class="k"><b>小計</b><small>${money(rc.per)} × ${rc.C} 人，申請表和領據會用這個金額</small></span><span class="v">$${money(rc.total)}</span></div></div>
     <div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>申請獎助人員明細</b><span class="muted" style="font-size:13px">列出增聘的托育人員</span>
       ${pool.length?`<select id="r-pick" aria-label="從薪資清冊加入"><option value="">從薪資清冊加入…</option>${pool.map(r=>`<option value="${esc(r.name)}">${esc(r.name)}</option>`).join('')}</select>`:''}
-      <button class="docbtn" data-act="r-add">＋ 新增一列</button></div>
-    <div class="tblwrap" style="margin-top:8px"><table class="ptbl"><thead><tr><th>職稱</th><th>姓名</th><th>身分證字號</th><th>到職日</th><th>勞保月投保薪資</th><th>投保日期</th><th>在職天數</th><th>備註</th><th></th></tr></thead><tbody>
-    ${R.people.length?R.people.map((x,i)=>`<tr>${['title','name','idno'].map(f=>`<td><input id="r-${f}-${i}" data-rp="${f}" data-i="${i}" value="${esc(x[f]||'')}" style="width:${f==='idno'?'110px':'80px'}"></td>`).join('')}
-      <td><input type="date" id="r-hire-${i}" data-rp="hire" data-i="${i}" value="${esc(x.hire||'')}"></td>
-      <td><input type="number" class="num" id="r-ins-${i}" data-rp="ins" data-i="${i}" value="${n0(x.ins)||''}" style="width:80px"></td>
-      <td><input type="date" id="r-insd-${i}" data-rp="insDate" data-i="${i}" value="${esc(x.insDate||'')}"></td>
-      <td class="num" id="r-wd-${i}">${workDays(x.hire)}</td>
-      <td><input id="r-note-${i}" data-rp="note" data-i="${i}" value="${esc(x.note||'')}" style="width:140px"></td>
-      <td><button class="x" data-act="r-del" data-i="${i}" aria-label="刪除" style="width:28px;height:28px">×</button></td></tr>`).join('')
-      :`<tr><td colspan="9" class="muted" style="text-align:left;padding:10px">還沒有人員。從上面的選單加入，或按「新增一列」。</td></tr>`}
-    </tbody></table></div>
+      <button class="docbtn" data-act="r-add">＋ 新增一位</button></div>
+    <div class="rlist" style="margin-top:8px">${R.people.length?R.people.map((x,i)=>rowCard('r-edit',`data-i="${i}"`,`${esc(x.name||'（未填姓名）')}<span class="muted" style="font-weight:500">・${esc(x.title||'')}</span>`,
+      `到職 ${rocShort(x.hire)||'—'}・投保 ${x.ins?money(n0(x.ins)):'—'}${x.note?`・${esc(x.note)}`:''}`, `<span>${workDays(x.hire)||'—'}</span>`)).join('')
+      :`<div class="empty"><span>還沒有人員。從上面的選單加入，或按「＋ 新增一位」。</span></div>`}</div>
     <p class="muted" style="font-size:13px;margin:8px 0 0">在職天數＝到職日到申請期間最後一天（${rocShort(isoOf(qEnd()))}）的天數，自動計算。</p>
   </section>`;
   return head+pv+prof+form+ros+pay.replace('2. 托育人員薪資清冊','3. 托育人員薪資清冊')+sign.replace('3. 員工簽收領據','4. 員工簽收領據')+att.replace('4. 附件','5. 附件');
@@ -1381,16 +1416,35 @@ document.addEventListener('click',e=>{
 });
 /* ── 互動 ── */
 document.addEventListener('click',e=>{
-  const el=e.target.closest('[data-act^="o-"]'); if(!el||!OPT.d&&el.dataset.act!=='o-preview') return;
+  const el=e.target.closest('[data-act^="o-"],[data-act^="r-"]'); if(!el||!OPT.d&&el.dataset.act!=='o-preview') return;
   const a=el.dataset.act, d=OPT.d;
   if(a==='o-pdf') optPdf();
   else if(a==='o-preview'){ OPT.preview=!OPT.preview; render(); }
   else if(a==='o-prof'){ OPT.showProfile=!OPT.showProfile; render(); }
   else if(a==='o-wel'){ d.welfare=el.dataset.v; saveOpt(); render(); }
-  else if(a==='o-addrow'){ d.months[+el.dataset.mi].rows.push({name:'',title:'托育人員',idno:'',fixed:0,other:0,labor:0,health:0,absent:0,od:0,note:''}); saveOpt(); render(); }
+  else if(a==='o-addrow'||a==='o-edit'){ const mi=+el.dataset.mi, ri=+el.dataset.ri, isNew=a==='o-addrow', mo=d.months[mi];
+    const r=isNew?{title:'托育人員',inc:true}:{...mo.rows[ri],inc:!mo.rows[ri].skip};
+    openModal({title:`${mo.month} 月・${isNew?'新增一位':r.name}`, value:r, saveText:isNew?'加入':'儲存',
+      fields:[{k:'name',label:'姓名',required:true,list:'staff-list'},{k:'title',label:'職稱'},{k:'idno',label:'身分證字號'},
+        {k:'fixed',label:'固定薪資',type:'number'},{k:'other',label:'其他獎金或津貼（加班、年終…）',type:'number'},
+        {k:'labor',label:'勞保費',type:'number'},{k:'health',label:'健保費',type:'number'},{k:'absent',label:'缺勤扣款（事、病假、遲到早退）',type:'number'},
+        {k:'od',label:'其他扣項',type:'number'},{k:'note',label:'備註',wide:true},{k:'inc',label:'列入這個月的清冊',type:'check'}],
+      datalist:`<datalist id="staff-list">${Object.keys(staffDir()).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>`,
+      onSave:v=>{ const dir=staffDir(), s0=dir[v.name]||{}; if(isNew){ v.title=v.title||s0.title||'托育人員'; v.idno=v.idno||s0.idno||''; }
+        ['fixed','other','labor','health','absent','od'].forEach(k=>v[k]=n0(v[k])); v.skip=!v.inc; delete v.inc;
+        if(isNew) mo.rows.push(v); else Object.assign(mo.rows[ri],v);
+        dir[v.name]={...s0,title:v.title,idno:v.idno,skip:v.skip}; d.months.forEach(m=>m.rows.forEach(x=>{ if(x.name===v.name){ x.title=v.title; x.idno=v.idno; } }));
+        saveProfile(); saveOpt(); render(); },
+      onDelete:isNew?null:()=>{ mo.rows.splice(ri,1); saveOpt(); render(); } }); }
   else if(a==='o-copyprev'){ const mi=+el.dataset.mi; d.months[mi].rows=d.months[mi-1].rows.map(r=>({...r,note:''})); saveOpt(); render(); }
   else if(a==='o-delrow'){ d.months[+el.dataset.mi].rows.splice(+el.dataset.ri,1); saveOpt(); render(); }
-  else if(a==='r-add'){ d.ros.people.push({title:'托育人員',name:'',idno:'',hire:'',ins:0,insDate:'',note:''}); saveOpt(); render(); }
+  else if(a==='r-add'||a==='r-edit'){ const isNew=a==='r-add', i=+el.dataset.i, x=isNew?{title:'托育人員'}:d.ros.people[i];
+    openModal({title:isNew?'新增申請獎助人員':`編輯 ${x.name}`, value:x, saveText:isNew?'加入':'儲存',
+      fields:[{k:'name',label:'姓名',required:true},{k:'title',label:'職稱'},{k:'idno',label:'身分證字號'},{k:'hire',label:'到職日',type:'date'},
+        {k:'ins',label:'勞保月投保薪資',type:'number'},{k:'insDate',label:'投保日期',type:'date'},{k:'note',label:'備註',wide:true}],
+      onSave:v=>{ v.ins=n0(v.ins); if(isNew) d.ros.people.push(v); else Object.assign(d.ros.people[i],v);
+        if(v.name){ const dir=staffDir(); dir[v.name]={...(dir[v.name]||{}),title:v.title,idno:v.idno}; saveProfile(); } saveOpt(); render(); },
+      onDelete:isNew?null:()=>{ d.ros.people.splice(i,1); saveOpt(); render(); } }); }
   else if(a==='r-del'){ d.ros.people.splice(+el.dataset.i,1); saveOpt(); render(); }
   else if(a==='o-rmfile'){ optRemoveFile(el.dataset.k,+el.dataset.i,!!el.dataset.local); }
 });
@@ -1561,21 +1615,10 @@ function viewDis(){
     <div class="sec-h"><h2>2. 幼兒名冊</h2><span class="meta">申請期間 ${rocDot(qStartIso())}–${rocDot(qEndIso())}</span></div>
     <div class="tip" style="margin-bottom:10px"><b>月數自動算</b>　每月以 30 日計，滿 15 日算 1 個月，未滿 15 日算半個月。送托期間空白＝收托日（或申請期間第一天）到申請期間最後一天。金額依障別自動帶入，也可以直接改。</div>
     <div class="field" style="max-width:260px;margin-bottom:10px"><label for="d-ql">名冊、領據的「第___季」（空白＝${qLabelOf(periodQs(qStartIso(),qEndIso()))}）</label><input id="d-ql" data-d="qLabel" value="${esc(d.qLabel||'')}" placeholder="例：3-4"></div>
-    <div class="tblwrap"><table class="ptbl"><thead><tr><th>姓名</th><th>身分證字號</th><th>出生</th><th>收托日期</th><th>送托起</th><th>送托迄</th><th>月數</th><th>通報日期</th><th>證明文件</th><th>障別</th><th>托育服務費</th><th>照顧費</th><th>托育人員</th><th></th></tr></thead><tbody>
-    ${d.kids.length?d.kids.map((k,i)=>`<tr>
-      <td><input id="dk-name-${i}" data-dk="name" data-i="${i}" value="${esc(k.name||'')}" style="width:70px"></td>
-      <td><input id="dk-idno-${i}" data-dk="idno" data-i="${i}" value="${esc(k.idno||'')}" style="width:105px"></td>
-      ${['birth','enroll','from','to'].map(f=>`<td><input type="date" id="dk-${f}-${i}" data-dk="${f}" data-i="${i}" value="${esc(k[f]||'')}"></td>`).join('')}
-      <td><input id="dk-months-${i}" class="num" type="number" step="0.5" data-dk="months" data-i="${i}" value="${k.months===''||k.months==null?'':k.months}" placeholder="${mStr(disMonths(kidFrom(k),kidTo(k)))}" style="width:52px"></td>
-      <td><input type="date" id="dk-report-${i}" data-dk="report" data-i="${i}" value="${esc(k.report||'')}" title="沒有通報就空白（表上印「無」）"></td>
-      <td><select id="dk-doc-${i}" data-dk="doc" data-i="${i}">${[1,2,3].map(v=>`<option value="${v}" ${n0(k.doc||1)===v?'selected':''}>${v}.${DDOC[v]}</option>`).join('')}</select></td>
-      <td><select id="dk-level-${i}" data-dk="level" data-i="${i}">${[1,2,3,4,5].map(v=>`<option value="${v}" ${n0(k.level||1)===v?'selected':''}>${DLEV[v].n}</option>`).join('')}</select></td>
-      <td><input id="dk-feeX-${i}" class="num" type="number" data-dk="feeX" data-i="${i}" value="${k.feeX===''||k.feeX==null?'':k.feeX}" placeholder="${kidFee({...k,feeX:''})}" style="width:72px"></td>
-      <td><input id="dk-careX-${i}" class="num" type="number" data-dk="careX" data-i="${i}" value="${k.careX===''||k.careX==null?'':k.careX}" placeholder="${kidCare({...k,careX:''})}" style="width:72px"></td>
-      <td><input id="dk-cg-${i}" data-dk="cg" data-i="${i}" value="${esc(k.cg||'')}" list="cg-list" style="width:70px"></td>
-      <td><button class="x" data-act="dk-del" data-i="${i}" aria-label="刪除" style="width:28px;height:28px">×</button></td></tr>`).join('')
-      :`<tr><td colspan="14" class="muted" style="text-align:left;padding:10px">還沒有幼兒。按「新增幼兒」。</td></tr>`}
-    </tbody></table></div>
+    <div class="rlist">${d.kids.length?d.kids.map((k,i)=>rowCard('dk-edit',`data-i="${i}"`,`${esc(k.name||'（未填姓名）')}${k.cg?`<span class="muted" style="font-weight:500">・托育人員 ${esc(k.cg)}</span>`:''}`,
+      `${DLEV[n0(k.level||1)].n}・${rocDot(kidFrom(k))}–${rocDot(kidTo(k))}・${mStr(kidMonths(k))} 個月${k.report?`・通報 ${rocDot(k.report)}`:''}`,
+      `<span>服務費 $${money(kidFee(k))}</span><span style="font-size:13px;color:var(--muted)">照顧費 $${money(kidCare(k))}</span>`)).join('')
+      :`<div class="empty">${CH.sha}<span>還沒有幼兒。按「＋ 新增幼兒」。</span></div>`}</div>
     <datalist id="cg-list">${Object.keys(dir).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
     <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="docbtn" data-act="dk-add">＋ 新增幼兒</button>
       ${DIS.prevKids&&DIS.prevKids.length&&!d.kids.length?`<button class="docbtn" data-act="dk-copy">從上一季複製 ${DIS.prevKids.length} 位</button>`:''}
@@ -1782,7 +1825,19 @@ document.addEventListener('click',e=>{
   const a=el.dataset.act, d=DIS.d; if(!d&&a!=='d-preview') return;
   if(a==='d-pdf') disPdf();
   else if(a==='d-preview'){ DIS.preview=!DIS.preview; render(); }
-  else if(a==='dk-add'){ d.kids.push({name:'',idno:'',birth:'',enroll:'',from:'',to:'',months:'',report:'',doc:1,level:1,feeX:'',careX:'',cg:''}); saveDis(); render(); }
+  else if(a==='dk-add'||a==='dk-edit'){ const isNew=a==='dk-add', i=+el.dataset.i, k=isNew?{doc:1,level:1}:d.kids[i];
+    const auto=disMonths(kidFrom({...k,from:''}),kidTo({...k,to:''}));
+    openModal({title:isNew?'新增幼兒':`編輯 ${k.name||'幼兒'}`, value:k, saveText:isNew?'加入名冊':'儲存',
+      note:'月數、金額空白就自動算：每月以 30 日計，滿 15 日算 1 個月，未滿算半個月；金額依障別帶入。',
+      fields:[{k:'name',label:'幼兒姓名',required:true},{k:'idno',label:'身分證字號'},{k:'birth',label:'出生日期',type:'date'},{k:'enroll',label:'收托日期',type:'date'},
+        {k:'level',label:'障別',type:'select',options:[1,2,3,4,5].map(v=>[v,DLEV[v].n])},{k:'doc',label:'檢附證明',type:'select',options:[1,2,3].map(v=>[v,`${v}.${DDOC[v]}`])},
+        {k:'from',label:'送托起（空白＝收托日或申請期間第一天）',type:'date'},{k:'to',label:'送托迄（空白＝申請期間最後一天）',type:'date'},
+        {k:'months',label:'請領月數（空白＝自動）',type:'number',step:'0.5',ph:mStr(auto)},{k:'report',label:'通報兒童發展中心日期（沒有就空白）',type:'date'},
+        {k:'feeX',label:'托育服務費（空白＝自動）',type:'number'},{k:'careX',label:'托育人員照顧費（空白＝自動）',type:'number'},
+        {k:'cg',label:'負責的托育人員',list:'cg-list2',wide:true}],
+      datalist:`<datalist id="cg-list2">${Object.keys(staffDir()).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>`,
+      onSave:v=>{ v.level=n0(v.level)||1; v.doc=n0(v.doc)||1; if(isNew) d.kids.push(v); else Object.assign(d.kids[i],v); saveDis(); render(); toast(isNew?`已加入 ${v.name}`:'已儲存'); },
+      onDelete:isNew?null:()=>{ const n=d.kids[i].name; d.kids.splice(i,1); saveDis(); render(); toast(`已刪除 ${n}`); } }); }
   else if(a==='dk-copy'){ d.kids=(DIS.prevKids||[]).map(k=>({...k,from:'',to:'',months:'',feeX:'',careX:''})); saveDis(); render(); }
   else if(a==='dk-del'){ d.kids.splice(+el.dataset.i,1); saveDis(); render(); }
   else if(a==='d-rmfile'){ const k=el.dataset.k,i=+el.dataset.i;
@@ -2323,6 +2378,11 @@ function careApplyPending(){
     CARE.d.list.push({id:'k'+Date.now().toString(36)+i,emp:String(r.emp),phone:String(r.phone||''),esex:r.esex||'女',kid:String(r.kid),ksex:r.ksex||'男',age:n0(r.age),dis:!!r.dis,from:String(r.from||''),to:'',note:String(r.note||'')}); n++; });
   CARE_PENDING=null; saveCare(); if(S.tab==='care') render(); toast(n?`已加入 ${n} 位到托兒措施名單`:'名單裡已經有這些人了');
 }   // 名單不寫在程式碼裡（個資），用「從 Excel 匯入名單」或手動新增
+const CARE_FIELDS=[
+  {k:'emp',label:'受僱者姓名',required:true},{k:'phone',label:'聯絡電話',type:'tel'},{k:'esex',label:'受僱者性別',type:'select',options:['女','男']},
+  {k:'kid',label:'子女姓名',required:true},{k:'ksex',label:'子女性別',type:'select',options:['男','女']},{k:'age',label:'子女年齡（歲）',type:'number'},
+  {k:'from',label:'開始月份',type:'month'},{k:'to',label:'停止月份（離職或退托）',type:'month'},
+  {k:'dis',label:'子女領有身障手冊（每月多 2,000）',type:'check'},{k:'note',label:'備註',wide:true}];
 const CARE_SLOTS=[{k:'signed',label:'已簽名的印領清冊（掃描）'},{k:'bank',label:'存摺（封面及匯款紀錄）'},{k:'other',label:'其他附件'}];
 const CARE_APPLY_SLOTS=[{k:'apply',label:'申請送件資料（送出後的檔案、回執）'}];
 /* 發放批次：3 月發 4–6 月、6 月發 7–9 月、9 月發 10–12 月、12 月發隔年 1–3 月 */
@@ -2369,31 +2429,18 @@ function viewCare(){
       ${canPrint?`<button class="btn" data-act="c-print">列印印領清冊</button>`:''}
       <button class="btn ${canPrint?'ghost':''}" data-act="c-pdf" ${CARE.busy?'disabled':''}>${CARE.busy||'下載印領清冊 PDF'}</button>
     </div>
-    <div class="tblwrap"><table class="ptbl"><thead><tr><th>發放</th><th>受僱者</th><th>子女</th><th>符合月份</th><th>補貼金額</th><th></th></tr></thead><tbody>
-    ${rows.map(x=>`<tr class="${x.skip?'off':''}"><td><input type="checkbox" id="c-on-${esc(x.r.id)}" data-con="${esc(x.r.id)}" ${x.skip?'':'checked'} aria-label="這季發放"></td>
-      <td>${esc(x.r.emp)}</td><td>${esc(x.r.kid)}${x.r.dis?' <span class="chip when">身障</span>':''}</td><td>${x.ms.length?x.ms.join('、')+' 月':'<span class="muted">不在期間內</span>'}</td>
-      <td><input type="number" class="num" id="c-amt-${esc(x.r.id)}" data-camt="${esc(x.r.id)}" value="${b.amt[x.r.id]!==undefined&&b.amt[x.r.id]!==''?b.amt[x.r.id]:''}" placeholder="${x.def}" style="width:90px"></td>
-      <td class="muted" style="font-size:12px">${x.amt!==x.def?'已手動改':''}</td></tr>`).join('')}
-    </tbody></table></div>
+    <div class="rlist">${rows.length?rows.map(x=>rowCard('c-pay',`data-id="${esc(x.r.id)}"`,`${esc(x.r.emp)}／${esc(x.r.kid)}`,
+      `${x.ms.length?x.ms.join('、')+' 月':'不在期間內'}${x.amt!==x.def&&!x.skip?'・已手動改金額':''}`,
+      `${x.skip?'<span class="chip when">這季不發</span>':`$${money(x.amt)}`}${x.r.dis?'<span class="chip when">身障</span>':''}`,x.skip)).join('')
+      :`<div class="empty">${CH.lulu}<span>先在下面的「員工子女名單」加人。</span></div>`}</div>
     <div class="out"><div><span class="k">發放人數</span><span class="v">${on.length} 位</span></div><div class="hl"><span class="k"><b>本季合計</b></span><span class="v">$${money(total)}</span></div></div>
   </section>`;
   const list=`<section class="card">
     <div class="sec-h"><h2>2. 員工子女名單</h2><span class="meta">1 月申請用的名冊也是這份</span></div>
-    <div class="tblwrap"><table class="ptbl"><thead><tr><th>受僱者</th><th>電話</th><th>性別</th><th>子女</th><th>性別</th><th>年齡</th><th>身障手冊</th><th>開始月份</th><th>停止月份</th><th>備註</th><th></th></tr></thead><tbody>
-    ${d.list.length?'':`<tr><td colspan="11" class="muted" style="text-align:left;padding:10px">還沒有名單。按下面「從 Excel 匯入名單」選托兒措施的申請名冊 Excel，或按「＋ 新增一位」。</td></tr>`}
-    ${d.list.map((r,i)=>`<tr>
-      <td><input id="cl-emp-${i}" data-cl="emp" data-i="${i}" value="${esc(r.emp)}" style="width:70px"></td>
-      <td><input id="cl-phone-${i}" data-cl="phone" data-i="${i}" value="${esc(r.phone)}" style="width:110px"></td>
-      <td><select id="cl-esex-${i}" data-cl="esex" data-i="${i}">${['女','男'].map(v=>`<option ${r.esex===v?'selected':''}>${v}</option>`).join('')}</select></td>
-      <td><input id="cl-kid-${i}" data-cl="kid" data-i="${i}" value="${esc(r.kid)}" style="width:70px"></td>
-      <td><select id="cl-ksex-${i}" data-cl="ksex" data-i="${i}">${['男','女'].map(v=>`<option ${r.ksex===v?'selected':''}>${v}</option>`).join('')}</select></td>
-      <td><input type="number" id="cl-age-${i}" data-cl="age" data-i="${i}" value="${esc(r.age)}" style="width:50px"></td>
-      <td><input type="checkbox" id="cl-dis-${i}" data-cl="dis" data-i="${i}" ${r.dis?'checked':''} aria-label="領有身障手冊"></td>
-      <td><input type="month" id="cl-from-${i}" data-cl="from" data-i="${i}" value="${esc(r.from)}"></td>
-      <td><input type="month" id="cl-to-${i}" data-cl="to" data-i="${i}" value="${esc(r.to)}" title="離職或退托的月份；空白＝持續"></td>
-      <td><input id="cl-note-${i}" data-cl="note" data-i="${i}" value="${esc(r.note)}" style="width:150px"></td>
-      <td>${CARE.confirm===r.id?`<button class="docbtn" data-act="c-delyes" data-i="${i}">確定刪除</button>`:`<button class="x" data-act="c-del" data-id="${esc(r.id)}" aria-label="刪除" style="width:28px;height:28px">×</button>`}</td></tr>`).join('')}
-    </tbody></table></div>
+    <div class="rlist">${d.list.length?d.list.map((r,i)=>rowCard('c-edit',`data-i="${i}"`,`${esc(r.emp||'（未填）')}／${esc(r.kid||'')}`,
+      [r.phone&&esc(r.phone), r.from&&`${+r.from.slice(0,4)-1911}/${+r.from.slice(5)} 起`, r.to&&`${+r.to.slice(0,4)-1911}/${+r.to.slice(5)} 停止`, r.note&&esc(r.note)].filter(Boolean).join('・'),
+      `${r.dis?'<span class="chip when">身障</span>':''}${r.to&&r.to<isoOf(today).slice(0,7)?'<span class="chip late">已停止</span>':''}`)).join('')
+      :`<div class="empty">${CH.lulu}<span>還沒有名單。按下面「從 Excel 匯入名單」，或「＋ 新增一位」。</span></div>`}</div>
     <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap"><button class="docbtn" data-act="c-add">＋ 新增一位</button><label class="docbtn" style="cursor:pointer">從 Excel 匯入名單<input type="file" id="c-xin" accept=".xls,.xlsx" hidden></label><span class="muted" style="font-size:12.5px">離職、退托就填「停止月份」，之後的季別自動不發。</span></div>
   </section>`;
   const yrs=[ROC_NOW,ROC_NOW+1], Y=d.years[CARE.ky]=d.years[CARE.ky]||{files:{},applied:false};
@@ -2510,11 +2557,18 @@ async function careUpload(k,files){
 /* ── 互動 ── */
 document.addEventListener('click',e=>{
   const el=e.target.closest('[data-act^="c-"]'); if(!el||!CARE.d) return; const a=el.dataset.act, d=CARE.d;
-  if(a==='c-pdf') carePdf(false);
+  if(a==='c-pay'){ const x=batchRows().find(y=>y.r.id===el.dataset.id); if(!x) return; const b=batch();
+    openModal({title:`${x.r.emp}／${x.r.kid}`, note:`${CARE.y} 年 ${qRange(CARE.q)}：符合 ${x.ms.length} 個月，自動算 ${money(x.def)} 元`, value:{on:!x.skip,amt:b.amt[x.r.id]??''},
+      fields:[{k:'on',label:'這季發放',type:'check'},{k:'amt',label:'補貼金額（空白＝自動算）',type:'number',ph:String(x.def)}],
+      onSave:v=>{ b.skip[x.r.id]=!v.on; b.amt[x.r.id]=v.amt; saveCare(); render(); } }); }
+  else if(a==='c-pdf') carePdf(false);
   else if(a==='c-settle') carePdf(true);
   else if(a==='c-print') carePrint();
   else if(a==='c-xlsx') careXlsx();
-  else if(a==='c-add'){ d.list.push({id:'k'+Date.now().toString(36),emp:'',phone:'',esex:'女',kid:'',ksex:'男',age:1,dis:false,from:`${ROC_NOW+1911}-${String(M_NOW).padStart(2,'0')}`,to:'',note:''}); saveCare(); render(); }
+  else if(a==='c-add'||a==='c-edit'){ const isNew=a==='c-add', i=+el.dataset.i, r=isNew?{esex:'女',ksex:'男',age:1,dis:false,from:`${ROC_NOW+1911}-${String(M_NOW).padStart(2,'0')}`}:d.list[i];
+    openModal({title:isNew?'新增員工子女':'編輯員工子女', value:r, fields:CARE_FIELDS, saveText:isNew?'加入名單':'儲存',
+      onSave:v=>{ if(isNew) d.list.push({id:'k'+Date.now().toString(36),to:'',note:'',...v}); else Object.assign(d.list[i],v); saveCare(); render(); toast(isNew?`已加入 ${v.emp}`:'已儲存'); },
+      onDelete:isNew?null:()=>{ const n=d.list[i].emp; d.list.splice(i,1); saveCare(); render(); toast(`已刪除 ${n}`); } }); }
   else if(a==='c-del'){ CARE.confirm=el.dataset.id; render(); }
   else if(a==='c-delyes'){ d.list.splice(+el.dataset.i,1); CARE.confirm=null; saveCare(); render(); }
   else if(a==='c-rmfile'){ const k=el.dataset.k,i=+el.dataset.i; if(el.dataset.local){ CARE.local[CARE.ky+':'+k].splice(i,1); render(); return; }
