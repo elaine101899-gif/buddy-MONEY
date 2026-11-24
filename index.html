@@ -104,6 +104,22 @@
       if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
     });
   }
+
+  /* ── 自動檢查新版：GitHub 上有新版本就跳提示，點一下更新 ── */
+  function verOf(t){ var m=String(t).match(/版本 (\d+\/\d+\/\d+ \d+:\d+)/); return m?m[1]:''; }
+  function checkUpdate(){
+    var cur=verOf((document.getElementById('ver')||{}).textContent||''); if(!cur) return;
+    fetch(location.pathname+'?t='+Date.now(),{cache:'no-store'}).then(function(r){ return r.text(); }).then(function(t){
+      var nv=verOf(t); if(!nv||nv===cur||document.getElementById('upd-bar')) return;
+      var b=document.createElement('button'); b.id='upd-bar'; b.type='button';
+      b.textContent='有新版本（'+nv+'），點這裡更新';
+      b.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(64px + env(safe-area-inset-bottom,0px));z-index:30;border:2.5px solid var(--line);background:var(--accent);color:var(--on-accent);font:inherit;font-weight:900;padding:10px 18px;border-radius:999px;box-shadow:0 4px 0 var(--line);cursor:pointer;max-width:92vw';
+      b.onclick=function(){ location.replace(location.pathname+'?v='+Date.now()+location.hash); };
+      document.body.appendChild(b);
+    }).catch(function(){});
+  }
+  window.addEventListener('load',function(){ setTimeout(checkUpdate,3000); setInterval(checkUpdate,5*60*1000); });
+  document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') checkUpdate(); });
   window.claude={use:function(n){ var v={db:dbApi,assets:assetsApi,downloads:downloadsApi}[n]||null;
     if((n==='db'||n==='assets')&&authReady) return authReady.then(function(){ return v; });
     return Promise.resolve(v); }};
@@ -405,7 +421,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 21:12</div>
+<div class="ver" id="ver">版本 115/11/24 21:14</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
