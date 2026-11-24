@@ -276,10 +276,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
         <div class="mascot" id="headMascot" aria-hidden="true"></div>
         <div><h1 id="brandName">小布迪 托育補助小幫手</h1><small>行政事務・補助申請・年度行事曆</small></div>
       </div>
-      <div class="seg" role="group" aria-label="切換中心">
-        <button id="c-xbd" data-center="xbd" aria-pressed="true">小布迪</button>
-        <button id="c-bbn" data-center="bbn" aria-pressed="false">邦比諾</button>
-      </div>
+
       <span class="sync" id="sync">連線中…</span>
     </div>
     <nav aria-label="主選單">
@@ -295,7 +292,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 15:43</div>
+<div class="ver" id="ver">版本 115/11/24 16:08</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -307,6 +304,7 @@ const CH = {
 };
 
 /* ───────── 中心 ───────── */
+const CENTER_ID = 'xbd'; // 每間中心一個獨立系統：xbd＝小布迪、bbn＝邦比諾
 const CENTERS = { xbd:{name:'小布迪', mascot:'budi'}, bbn:{name:'邦比諾', mascot:'sha'} };
 
 /* ───────── 年度固定事項（依兩份文件整理） ───────── */
@@ -393,7 +391,7 @@ if(!YEARS.includes(116)) YEARS.push(116);
 YEARS.sort();
 const DEFAULT_SETTINGS = {kids:0, op:1262000, disQ:1, dis:[]};
 const S = {
-  center: CENTERS[lsGet('center')] ? lsGet('center') : 'xbd',
+  center: CENTER_ID,
   tab: 'home', year: ROC_NOW,
   checks:{}, yearExists:{}, cases:[], settings:{...DEFAULT_SETTINGS},
   open:new Set(), newType:null, caseOpen:null, confirmDel:null, mode:'loading'
@@ -696,7 +694,6 @@ function render(){
   document.body.dataset.center=S.center;
   $('brandName').textContent=cn.name+' 托育補助小幫手';
   $('headMascot').innerHTML=CH[cn.mascot];
-  Object.keys(CENTERS).forEach(k=>$('c-'+k).setAttribute('aria-pressed',String(k===S.center)));
   document.querySelectorAll('nav a').forEach(a=>a.setAttribute('aria-current',a.dataset.tab===S.tab?'page':'false'));
   const v={home:viewHome,calendar:viewCalendar,cases:viewCases,calc:viewCalc,opt:viewOpt,dis:viewDis}[S.tab]||viewHome;
   $('main').innerHTML=v();
