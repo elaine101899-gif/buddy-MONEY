@@ -397,7 +397,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 19:49</div>
+<div class="ver" id="ver">版本 115/11/24 20:32</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -651,7 +651,9 @@ function softRender(){
 document.addEventListener('focusout',()=>{ if(pendingRender){ setTimeout(()=>{ if(pendingRender){ pendingRender=false; softRender(); } },50); } });
 
 /* 目前沒有需求的事項（例如沒有身障兒）：還是顯示，但算完成 */
-const naTask=t=>/^dis-/.test(t.id)&&!!(OPT.profile&&OPT.profile.disNone);
+const DIS_NONE_DEFAULT={bbn:true};   // 邦比諾目前沒有身障兒
+const disNone=()=>{ const v=OPT.profile&&OPT.profile.disNone; return v===undefined?!!DIS_NONE_DEFAULT[CENTER_ID]:!!v; };
+const naTask=t=>/^dis-/.test(t.id)&&disNone();
 const isDone=(t,y)=>naTask(t)||!!(S.checks[y]||{})[t.id];
 function taskHTML(t,y,showWhen){
   const ck=S.checks[y]||{}, na=naTask(t), done=na||!!ck[t.id];
@@ -1579,9 +1581,9 @@ function viewDis(){
   const head=`<section class="card">
     <div class="eyebrow">收托身障暨疑似發展遲緩幼兒・每季</div>
     <div class="sec-h"><h2>身障補助申請</h2><span class="meta">${DIS.q===4?'隔年 1 月底前繳':`${DIS.q*3+1} 月底前繳`}</span></div>
-    <div class="${p.disNone?'tip':''}" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-      <label class="tk" style="margin:0"><input type="checkbox" id="d-none" ${p.disNone?'checked':''}><span class="tt">目前沒有身障兒（沒有需求）</span></label>
-      <span class="muted" style="font-size:13px">${p.disNone?'行事曆上的身障補助會標成「不用申請」，不算沒完成。之後有身障兒入托，取消勾選就恢復。':'勾選後，行事曆上的身障補助會標成不用申請，但還是會留著。'}</span>
+    <div class="${disNone()?'tip':''}" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <label class="tk" style="margin:0"><input type="checkbox" id="d-none" ${disNone()?'checked':''}><span class="tt">目前沒有身障兒（沒有需求）</span></label>
+      <span class="muted" style="font-size:13px">${disNone()?'行事曆上的身障補助會標成「不用申請」，不算沒完成。之後有身障兒入托，取消勾選就恢復。':'勾選後，行事曆上的身障補助會標成不用申請，但還是會留著。'}</span>
     </div>
     <div class="form" style="margin-top:0;padding-top:0;border-top:0">
       <div class="field"><label for="d-y">年度</label><select id="d-y">${yrs.map(y=>`<option value="${y}" ${y===DIS.y?'selected':''}>${y} 年</option>`).join('')}</select></div>
