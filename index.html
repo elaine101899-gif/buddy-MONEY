@@ -382,7 +382,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 18:52</div>
+<div class="ver" id="ver">版本 115/11/24 19:38</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -2310,7 +2310,19 @@ document.addEventListener('input',e=>{
 /* ═════════ 托兒措施補助（雇主補助受僱者子女育兒補貼） ═════════ */
 const CARE_ON = CENTER_ID==='xbd';
 const CARE_RATE=2000, CARE_DIS=2000;              // 每位子女每月 2,000；領有身障手冊每月再加 2,000（員工育兒補助發放辦法）
-const CARE_SEED={};   // 名單不寫在程式碼裡（個資），用「從 Excel 匯入名單」或手動新增
+const CARE_SEED={};
+/* 一次性匯入連結：#careimport=<base64 JSON>，登入後自動加入名單，加完就把網址清掉 */
+let CARE_PENDING=null;
+(function(){ try{ const m=location.hash.match(/^#careimport=([A-Za-z0-9_\-]+)/); if(!m) return;
+  const b64=m[1].replace(/-/g,'+').replace(/_/g,'/'); const bin=atob(b64); const bytes=new Uint8Array([...bin].map(c=>c.charCodeAt(0)));
+  CARE_PENDING=JSON.parse(new TextDecoder().decode(bytes)); history.replaceState(null,'',location.pathname+location.search+'#care'); }catch(e){ CARE_PENDING=null; } })();
+function careApplyPending(){
+  if(!CARE_PENDING||!CARE.d||!Array.isArray(CARE_PENDING)) return;
+  const have=new Set(CARE.d.list.map(r=>r.emp+'|'+r.kid)); let n=0;
+  CARE_PENDING.forEach((r,i)=>{ if(!r||!r.emp||!r.kid||have.has(r.emp+'|'+r.kid)) return;
+    CARE.d.list.push({id:'k'+Date.now().toString(36)+i,emp:String(r.emp),phone:String(r.phone||''),esex:r.esex||'女',kid:String(r.kid),ksex:r.ksex||'男',age:n0(r.age),dis:!!r.dis,from:String(r.from||''),to:'',note:String(r.note||'')}); n++; });
+  CARE_PENDING=null; saveCare(); if(S.tab==='care') render(); toast(n?`已加入 ${n} 位到托兒措施名單`:'名單裡已經有這些人了');
+}   // 名單不寫在程式碼裡（個資），用「從 Excel 匯入名單」或手動新增
 const CARE_SLOTS=[{k:'signed',label:'已簽名的印領清冊（掃描）'},{k:'bank',label:'存摺（封面及匯款紀錄）'},{k:'other',label:'其他附件'}];
 const CARE_APPLY_SLOTS=[{k:'apply',label:'申請送件資料（送出後的檔案、回執）'}];
 /* 發放批次：3 月發 4–6 月、6 月發 7–9 月、9 月發 10–12 月、12 月發隔年 1–3 月 */
@@ -2323,9 +2335,9 @@ function careSubscribe(){
   if(CARE.unsub){ try{CARE.unsub()}catch(e){} CARE.unsub=null; }
   CARE.d=null; if(!CARE_ON) return;
   const seed=()=>({list:JSON.parse(JSON.stringify(CARE_SEED[S.center]||[])),batches:{},years:{},seeded:true});
-  if(!db){ let o=null; try{ o=JSON.parse(lsGet(`local:${S.center}:care`)||'null'); }catch(e){} CARE.d=o?careNorm(o):seed(); return; }
+  if(!db){ let o=null; try{ o=JSON.parse(lsGet(`local:${S.center}:care`)||'null'); }catch(e){} CARE.d=o?careNorm(o):seed(); careApplyPending(); return; }
   const c=S.center;
-  CARE.unsub=db.doc(carePath()).onSnapshot(s=>{ if(S.center!==c) return; CARE.d=s.exists?careNorm(JSON.parse(JSON.stringify(s.data()))):seed(); if(S.tab==='care') softRender(); },()=>{ CARE.d=CARE.d||seed(); });
+  CARE.unsub=db.doc(carePath()).onSnapshot(s=>{ if(S.center!==c) return; CARE.d=s.exists?careNorm(JSON.parse(JSON.stringify(s.data()))):seed(); careApplyPending(); if(S.tab==='care') softRender(); },()=>{ CARE.d=CARE.d||seed(); });
 }
 let careTimer=null;
 function saveCare(){ if(!db){ lsSet(`local:${S.center}:care`,JSON.stringify(CARE.d)); return; } clearTimeout(careTimer); const path=carePath(), body=JSON.parse(JSON.stringify(CARE.d)); careTimer=setTimeout(()=>enqueue(path,()=>db.doc(path).set(body)),600); }
