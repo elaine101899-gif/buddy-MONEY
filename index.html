@@ -292,7 +292,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 16:57</div>
+<div class="ver" id="ver">版本 115/11/24 16:59</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -312,7 +312,7 @@ const foundedIso = () => FOUNDED[CENTER_ID] || '1900-01-01';
 const foundedDate = () => { const [y,m,d]=foundedIso().split('-').map(Number); return new Date(y,m-1,d); };
 const foundedRoc = () => foundedDate().getFullYear()-1911;
 const qEndDate = (y,q) => new Date(y+1911,q*3,0);
-const qOk = (y,q) => qEndDate(y,q) >= foundedDate();
+const qOk = (y,q) => new Date(y+1911,q*3-3,1) >= foundedDate(); // 整季都在成立後才申請
 
 /* ───────── 年度固定事項（依兩份文件整理） ───────── */
 const GRANT_DOCS = ['申請表','領據','薪資清冊（社會局版本）＋托育人員 1 月匯款紀錄','核銷表（設施設備＝人數×2,000；營運補助）','預算表、絀結表','勞健保繳費單及名冊','勞退繳費單及名冊'];
@@ -340,8 +340,11 @@ TASKS.push(
 const tasksOf = m => TASKS.filter(t=>t.m===m);
 /* 事項在成立後才要做：季報類看「申報的那一季」有沒有在成立後，其他看當月 */
 function taskActive(t,y){
-  const end = (/^(dis|opt)-/.test(t.id)) ? new Date(y+1911,t.m-1,0) : new Date(y+1911,t.m,0);
-  return end >= foundedDate();
+  const F=foundedDate();
+  if(/^(dis|opt)-/.test(t.id)) return new Date(y+1911,t.m-4,1)>=F;          // 申報的那一季要整季都在成立後
+  if(t.id==='svc-grant'||t.id==='settle-11') return new Date(y+1911,2,1)>=F; // 設施設備：當年 3 月已成立才有
+  if(t.id==='ins-backfill') return new Date(y+1910,2,1)>=F;                  // 補交的是去年核銷的資料
+  return new Date(y+1911,t.m,0)>=F;
 }
 const REP={once:'不重複',month:'每月',quarter:'每季',year:'每年'};
 function customOf(m,y){
