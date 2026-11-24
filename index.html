@@ -6,6 +6,7 @@
 <!-- 此檔由「托育補助小幫手」產生：資料存在 Firebase 的 subsidy/ 底下 -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script>
 /* GitHub 版：把補助系統的資料存到小布迪的 Firebase（subsidy/ 底下，跟出勤資料分開） */
 (function(){
@@ -62,9 +63,50 @@
   }:null;
   window.__fbBytes=function(id){ return ref('files/'+id+'/data').once('value').then(function(s){ var v=s.val(); if(!v) throw new Error('missing'); var bin=atob(v), a=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) a[i]=bin.charCodeAt(i); return a; }); };
 
-  var downloadsApi={save:function(o){ var blob=o.data instanceof Blob?o.data:new Blob([o.data],{type:'application/pdf'}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=o.filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(a.href);},4000); return Promise.resolve(); }};
+  var downloadsApi={save:function(o){ var ty=/\.xlsx$/i.test(o.filename)?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'application/pdf'; var blob=o.data instanceof Blob?o.data:new Blob([o.data],{type:ty}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=o.filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(a.href);},4000); return Promise.resolve(); }};
 
-  window.claude={use:function(n){ return Promise.resolve({db:dbApi,assets:assetsApi,downloads:downloadsApi}[n]||null); }};
+  /* ── 登入：沒登入前不連資料庫 ── */
+  var authReady=null, auth=null;
+  try{ if(fdb&&firebase.auth) auth=firebase.auth(); }catch(e){}
+  function esc(t){ return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function loginUI(){
+    var el=document.getElementById('login-gate'); if(el) return el;
+    el=document.createElement('div'); el.id='login-gate';
+    el.innerHTML='<form id="lg-form" class="card" style="width:min(380px,100%);display:flex;flex-direction:column;gap:12px">'
+      +'<div style="display:flex;align-items:center;gap:10px"><div class="mascot" id="lg-m" aria-hidden="true"></div><div><b style="font-size:19px" id="lg-t">托育補助小幫手</b><div class="muted" style="font-size:13px">請先登入</div></div></div>'
+      +'<div class="field"><label for="lg-email">電子郵件</label><input id="lg-email" type="email" autocomplete="username" required></div>'
+      +'<div class="field"><label for="lg-pass">密碼</label><input id="lg-pass" type="password" autocomplete="current-password" required></div>'
+      +'<div id="lg-err" role="alert" style="color:var(--coral-t);font-size:13.5px;font-weight:700;min-height:1em"></div>'
+      +'<button class="btn" type="submit" id="lg-btn">登入</button>'
+      +'<button class="docbtn" type="button" id="lg-forgot" style="align-self:flex-start">忘記密碼</button></form>';
+    el.style.cssText='position:fixed;inset:0;z-index:50;background:var(--ground);display:grid;place-items:center;padding:24px max(16px,env(safe-area-inset-left,0px))';
+    document.body.appendChild(el);
+    try{ var h=document.getElementById('headMascot'); if(h) document.getElementById('lg-m').innerHTML=h.innerHTML; var b=document.getElementById('brandName'); if(b) document.getElementById('lg-t').textContent=b.textContent; }catch(e){}
+    var msg=function(t){ document.getElementById('lg-err').textContent=t; };
+    var MAP={'auth/invalid-email':'電子郵件格式不對','auth/user-not-found':'帳號或密碼不對','auth/wrong-password':'帳號或密碼不對','auth/invalid-credential':'帳號或密碼不對','auth/invalid-login-credentials':'帳號或密碼不對','auth/too-many-requests':'嘗試太多次，請稍後再試','auth/network-request-failed':'網路連不上，請檢查網路','auth/user-disabled':'這個帳號已停用'};
+    document.getElementById('lg-form').addEventListener('submit',function(e){ e.preventDefault(); msg(''); var b=document.getElementById('lg-btn'); b.disabled=true; b.textContent='登入中…';
+      auth.signInWithEmailAndPassword(document.getElementById('lg-email').value.trim(),document.getElementById('lg-pass').value).catch(function(err){ msg(MAP[err.code]||('登入失敗（'+err.code+'）')); b.disabled=false; b.textContent='登入'; }); });
+    document.getElementById('lg-forgot').addEventListener('click',function(){ var em=document.getElementById('lg-email').value.trim(); if(!em){ msg('請先填電子郵件，再按忘記密碼'); return; }
+      auth.sendPasswordResetEmail(em).then(function(){ msg('已寄出重設密碼的信，請到信箱收信'); }).catch(function(err){ msg(MAP[err.code]||'寄不出去，請確認電子郵件'); }); });
+    return el;
+  }
+  function addLogout(user){
+    if(document.getElementById('lg-out')) return; var bar=document.querySelector('.bar1'); if(!bar) return;
+    var w=document.createElement('div'); w.style.cssText='display:flex;align-items:center;gap:8px;font-size:12.5px';
+    w.innerHTML='<span class="muted" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(user.email||'')+'</span><button class="docbtn" id="lg-out">登出</button>';
+    bar.appendChild(w); document.getElementById('lg-out').addEventListener('click',function(){ auth.signOut().then(function(){ location.reload(); }); });
+  }
+  if(auth){
+    authReady=new Promise(function(res){
+      var start=function(){ auth.onAuthStateChanged(function(u){
+        if(u){ var g=document.getElementById('login-gate'); if(g) g.remove(); addLogout(u); res(true); }
+        else { loginUI(); } }); };
+      if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
+    });
+  }
+  window.claude={use:function(n){ var v={db:dbApi,assets:assetsApi,downloads:downloadsApi}[n]||null;
+    if((n==='db'||n==='assets')&&authReady) return authReady.then(function(){ return v; });
+    return Promise.resolve(v); }};
 })();
 
 </script>
