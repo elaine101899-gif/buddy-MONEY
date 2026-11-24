@@ -292,7 +292,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 16:54</div>
+<div class="ver" id="ver">版本 115/11/24 16:57</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -343,7 +343,21 @@ function taskActive(t,y){
   const end = (/^(dis|opt)-/.test(t.id)) ? new Date(y+1911,t.m-1,0) : new Date(y+1911,t.m,0);
   return end >= foundedDate();
 }
-const activeTasks = (m,y) => tasksOf(m).filter(t=>taskActive(t,y));
+const REP={once:'不重複',month:'每月',quarter:'每季',year:'每年'};
+function customOf(m,y){
+  const out=[];
+  (S.custom||[]).forEach(c=>{
+    const d=parseDate(c.date); if(!d) return;
+    const cy=d.getFullYear()-1911, cm=d.getMonth()+1, idx=(y-cy)*12+(m-cm);
+    if(idx<0) return;
+    const r=c.rep||'once';
+    const hit = r==='once'?idx===0 : r==='month'?true : r==='quarter'?idx%3===0 : idx%12===0;
+    if(!hit) return;
+    out.push({id:'c-'+c.id+(r==='month'||r==='quarter'?'-'+m:''), m, title:c.title, note:c.note||'', custom:c, day:d.getDate()});
+  });
+  return out;
+}
+const activeTasks = (m,y) => [...tasksOf(m).filter(t=>taskActive(t,y)), ...customOf(m,y)];
 
 /* 116 年行事曆的放假與活動 */
 const HOLIDAYS = {116:{
@@ -406,7 +420,7 @@ const DEFAULT_SETTINGS = {kids:0, op:1262000, disQ:1, dis:[]};
 const S = {
   center: CENTER_ID,
   tab: 'home', year: ROC_NOW,
-  checks:{}, yearExists:{}, cases:[], settings:{...DEFAULT_SETTINGS},
+  checks:{}, yearExists:{}, cases:[], custom:[], editCustom:null, settings:{...DEFAULT_SETTINGS},
   open:new Set(), newType:null, caseOpen:null, confirmDel:null, mode:'loading'
 };
 
@@ -422,13 +436,13 @@ const base = () => `centers/${S.center}`;
 function localKey(){ return 'local:'+S.center; }
 function loadLocal(){
   let o={}; try{ o=JSON.parse(lsGet(localKey())||'{}'); }catch(e){}
-  S.checks=o.checks||{}; S.cases=o.cases||[]; S.settings={...DEFAULT_SETTINGS,...(o.settings||{})};
+  S.checks=o.checks||{}; S.cases=o.cases||[]; S.custom=o.custom||[]; S.settings={...DEFAULT_SETTINGS,...(o.settings||{})};
 }
-function saveLocal(){ lsSet(localKey(), JSON.stringify({checks:S.checks,cases:S.cases,settings:S.settings})); }
+function saveLocal(){ lsSet(localKey(), JSON.stringify({checks:S.checks,cases:S.cases,custom:S.custom,settings:S.settings})); }
 
 function subscribe(){
   unsubs.forEach(u=>{try{u()}catch(e){}}); unsubs=[];
-  S.checks={}; S.yearExists={}; S.cases=[]; S.settings={...DEFAULT_SETTINGS};
+  S.checks={}; S.yearExists={}; S.cases=[]; S.custom=[]; S.settings={...DEFAULT_SETTINGS};
   if(!db){ loadLocal(); setMode('local'); optSubscribe(); profSubscribe(); disSubscribe(); DIS.prevKids=undefined; render(); return; }
   setMode('loading'); render();
   clearTimeout(loadTimer);
@@ -442,6 +456,9 @@ function subscribe(){
       S.yearExists[y]=s.exists; S.checks[y]={...((s.data()||{}).checks||{})}; done(s); softRender();
     },err));
   });
+  unsubs.push(db.collection(`${base()}/custom`).onSnapshot(s=>{
+    if(S.center!==c) return; S.custom=s.docs.map(d=>({id:d.id,...d.data()})); softRender();
+  },()=>{}));
   unsubs.push(db.collection(`${base()}/cases`).onSnapshot(s=>{
     if(S.center!==c) return;
     S.cases=s.docs.map(d=>({id:d.id,...d.data()})); done(s); softRender();
@@ -468,6 +485,16 @@ function setCheck(y,key,val){
     if(S.yearExists[y]) await ref.update({checks:{[key]:val}});
     else { await ref.set({checks:{...S.checks[y]}}); S.yearExists[y]=true; }
   });
+}
+function saveCustom(c){
+  const i=S.custom.findIndex(x=>x.id===c.id); if(i>=0) S.custom[i]=c; else S.custom.push(c);
+  if(!db){ saveLocal(); return; }
+  const {id,...body}=c; const ref=db.doc(`${base()}/custom/${id}`); enqueue(ref.path,()=>ref.set(body));
+}
+function deleteCustom(id){
+  S.custom=S.custom.filter(c=>c.id!==id);
+  if(!db){ saveLocal(); return; }
+  const ref=db.doc(`${base()}/custom/${id}`); enqueue(ref.path,()=>ref.delete());
 }
 function saveCase(c){
   const i=S.cases.findIndex(x=>x.id===c.id); if(i>=0) S.cases[i]=c; else S.cases.push(c);
@@ -508,12 +535,13 @@ function taskHTML(t,y,showWhen){
   const ck=S.checks[y]||{}, done=!!ck[t.id];
   const key=y+':'+t.id, open=S.open.has(key);
   const dn=t.docs?t.docs.filter((_,i)=>ck[t.id+'~'+i]).length:0;
-  const dl=daysLeft(y,t.m);
+  const dl=t.day?Math.round((new Date(y+1911,t.m-1,t.day)-today)/864e5):daysLeft(y,t.m);
+  const dueTxt=t.day?`${t.m}/${t.day} 前`:'月底前';
   let chip='';
   if(done) chip='<span class="chip ok">完成</span>';
-  else if(y===ROC_NOW && t.m===M_NOW || y>ROC_NOW || (y===ROC_NOW && t.m>M_NOW)) chip = dl>=0 && dl<=45 ? `<span class="chip due">月底前・剩 <span class="num">${dl}</span> 天</span>` : '';
+  else if(y===ROC_NOW && t.m===M_NOW || y>ROC_NOW || (y===ROC_NOW && t.m>M_NOW)) chip = dl>=0 && dl<=45 ? `<span class="chip due">${dueTxt}・剩 <span class="num">${dl}</span> 天</span>` : (dl<0&&!done&&t.day?'<span class="chip late">已過期限</span>':'');
   else chip='<span class="chip late">已過期限</span>';
-  const when = showWhen ? `<span class="chip when">${y} 年 ${t.m} 月</span>` : '';
+  const when = (showWhen ? `<span class="chip when">${y} 年 ${t.m} 月${t.day?' '+t.day+' 日':''}</span>` : (t.day?`<span class="chip when">${t.m}/${t.day}</span>`:'')) + (t.custom?`<span class="chip when">自訂${t.custom.rep&&t.custom.rep!=='once'?'・'+REP[t.custom.rep]:''}</span><button class="docbtn" data-act="cu-edit" data-id="${esc(t.custom.id)}" style="padding:0 10px">編輯</button>`:'');
   let calc='';
   const g=grant();
   if(t.calc==='p1') calc = g.kids ? `<div class="calcline">第一期申請金額：<span class="num">$${money(g.p1)}</span>（<a href="#calc">試算</a>）</div>` : `<div class="calcline"><a href="#calc">先到補助試算填收托人數</a></div>`;
@@ -522,9 +550,9 @@ function taskHTML(t,y,showWhen){
   if(t.id.startsWith('dis-')){ const q=t.m===1?4:(t.m-1)/3, yy=t.m===1?y-1:y; calc=`<div class="calcline"><a href="#dis" data-act="godis" data-y="${yy}" data-q="${q}">填寫名冊、產生 PDF →</a></div>`; }
   if(false) calc = disTotal() ? `<div class="calcline">目前試算：<span class="num">$${money(disTotal())}</span>（<a href="#calc">試算</a>）</div>` : '';
   return `<div class="task ${done?'done':''}">
-    <label class="tk"><input type="checkbox" id="tk-${y}-${t.id}" data-act="tick" data-y="${y}" data-k="${t.id}" ${done?'checked':''}><span class="tt">${t.title}</span></label>
+    <label class="tk"><input type="checkbox" id="tk-${y}-${t.id}" data-act="tick" data-y="${y}" data-k="${t.id}" ${done?'checked':''}><span class="tt">${t.custom?esc(t.title):t.title}</span></label>
     ${(chip||when)?`<div class="tmeta">${when}${chip}</div>`:''}
-    ${t.note?`<div class="tn">${t.note}</div>`:''}
+    ${t.note?`<div class="tn">${t.custom?esc(t.note):t.note}</div>`:''}
     ${calc}
     ${t.docs?`<div class="docrow"><button class="docbtn" data-act="toggle" data-key="${key}" aria-expanded="${open}">文件 <span class="num">${dn}/${t.docs.length}</span>・${open?'收起':'展開清單'}</button><div class="prog"><i style="width:${dn/t.docs.length*100}%"></i></div></div>
       ${open?`<ul class="docs">${t.docs.map((d,i)=>`<li><label><input type="checkbox" id="tk-${y}-${t.id}-${i}" data-act="tick" data-y="${y}" data-k="${t.id}~${i}" ${ck[t.id+'~'+i]?'checked':''}><span>${d}</span></label></li>`).join('')}</ul>`:''}`:''}
@@ -572,7 +600,7 @@ function viewHome(){
   </section>
   ${od.length?`<section><div class="sec-h"><h2>前兩個月還沒勾完</h2><span class="meta">做完了就勾起來，這裡會清空</span></div>
     <div class="grid2">${od.map(x=>taskHTML(x.t,x.y,true)).join('')}</div></section>`:''}
-  <section><div class="sec-h"><h2>${ROC_NOW} 年 ${M_NOW} 月要做的事</h2><span class="meta">期限：${rocDate(monthEnd(ROC_NOW,M_NOW))}</span></div>
+  ${customForm()}<section><div class="sec-h"><h2>${ROC_NOW} 年 ${M_NOW} 月要做的事</h2><span class="meta"><button class="btn sm" data-act="cu-new">＋ 新增事項</button></span></div>
     ${now.length?`<div class="grid2">${now.map(x=>taskHTML(x.t,x.y,false)).join('')}</div>`:`<div class="empty">${CH.ding}<span>這個月沒有固定的補助申報或檢查。</span></div>`}
   </section>
   <section><div class="sec-h"><h2>接下來兩個月</h2><a class="meta" href="#calendar">看整年行事曆</a></div>
@@ -584,17 +612,36 @@ function viewHome(){
   </section>`;
 }
 
+function customForm(){
+  const c=S.editCustom; if(!c) return '';
+  return `<form class="card" id="cu-form" style="display:flex;flex-direction:column;gap:12px">
+    <div class="sec-h" style="margin:0"><h2>${c.id?'編輯事項':'新增事項'}</h2></div>
+    <div class="calc-io" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+      <div class="field" style="grid-column:1/-1"><label for="cu-title">事項名稱</label><input id="cu-title" required value="${esc(c.title||'')}" placeholder="例：社會局訪視、繳交防疫物資清冊"></div>
+      <div class="field"><label for="cu-date">日期（期限）</label><input id="cu-date" type="date" required value="${esc(c.date||'')}"></div>
+      <div class="field"><label for="cu-rep">重複</label><select id="cu-rep">${Object.entries(REP).map(([k,v])=>`<option value="${k}" ${(c.rep||'once')===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="field" style="grid-column:1/-1"><label for="cu-note">備註（選填）</label><input id="cu-note" value="${esc(c.note||'')}" placeholder="例：要帶的文件、聯絡人"></div>
+    </div>
+    <div class="row-actions" style="justify-content:flex-start">
+      <button class="btn" type="submit">${c.id?'儲存':'加入行事曆'}</button>
+      <button class="btn ghost" type="button" data-act="cu-cancel">取消</button>
+      ${c.id?(S.confirmDel==='cu-'+c.id?`<span style="align-self:center;font-weight:700">確定刪除？</span><button class="btn danger" type="button" data-act="cu-delyes">刪除</button>`:`<button class="btn ghost" type="button" data-act="cu-delask" style="margin-left:auto">刪除這個事項</button>`):''}
+    </div>
+  </form>`;
+}
 function viewCalendar(){
   const y=S.year, hol=HOLIDAYS[y]||{};
-  const allT=TASKS.filter(t=>taskActive(t,y)), allDone=allT.filter(t=>(S.checks[y]||{})[t.id]).length;
+  const allT=Array.from({length:12},(_,i)=>activeTasks(i+1,y)).flat(), allDone=allT.filter(t=>(S.checks[y]||{})[t.id]).length;
   return `
   <section class="card">
-    <div class="sec-h" style="margin-bottom:6px"><h2>${y} 年行事曆</h2><span class="meta">已完成 <span class="num">${allDone}/${allT.length}</span> 件固定事項</span></div>
+    <div class="sec-h" style="margin-bottom:6px"><h2>${y} 年行事曆</h2><span class="meta">已完成 <span class="num">${allDone}/${allT.length}</span> 件事項</span></div>
     <div class="yearbar">
       <div class="seg" role="group" aria-label="選擇年度">${YEARS.map(Y=>`<button data-act="year" data-y="${Y}" aria-pressed="${Y===y}">${Y} 年</button>`).join('')}</div>
       <span class="muted" style="font-size:13px">${HOLIDAYS[y]?'放假日依 116 年行事曆':'這一年的放假日還沒提供，只列固定事項'}</span>
+      <button class="btn sm" data-act="cu-new" style="margin-left:auto">＋ 新增事項</button>
     </div>
   </section>
+  ${customForm()}
   <div class="months">
     ${Array.from({length:12},(_,i)=>i+1).map(m=>{
       const ts=activeTasks(m,y), h=hol[m]||[], pre=new Date(y+1911,m,0)<foundedDate();
@@ -1658,6 +1705,11 @@ document.addEventListener('click',e=>{
   const a=el.dataset.act;
   if(a==='toggle'){ const k=el.dataset.key; S.open.has(k)?S.open.delete(k):S.open.add(k); render(); }
   else if(a==='year'){ S.year=Number(el.dataset.y); render(); }
+  else if(a==='cu-new'){ S.editCustom={title:'',date:isoOf(today),rep:'once',note:''}; S.confirmDel=null; render(); const t=$('cu-title'); if(t){ t.focus(); t.scrollIntoView({block:'center'}); } }
+  else if(a==='cu-edit'){ const c=S.custom.find(x=>x.id===el.dataset.id); if(c){ S.editCustom={...c}; S.confirmDel=null; render(); const f=$('cu-form'); if(f) f.scrollIntoView({block:'center'}); } }
+  else if(a==='cu-cancel'){ S.editCustom=null; render(); }
+  else if(a==='cu-delask'){ S.confirmDel='cu-'+S.editCustom.id; render(); }
+  else if(a==='cu-delyes'){ const n=S.editCustom.title; deleteCustom(S.editCustom.id); S.editCustom=null; S.confirmDel=null; render(); toast('已刪除「'+n+'」'); }
   else if(a==='newtype'){ S.newType = S.newType===el.dataset.type?null:el.dataset.type; render(); const n=$('nc-name'); if(n) n.focus(); }
   else if(a==='togglecase'){ S.caseOpen = S.caseOpen===el.dataset.id?null:el.dataset.id; S.confirmDel=null; render(); }
   else if(a==='opencase'){ S.caseOpen=el.dataset.id; }
@@ -1694,6 +1746,11 @@ document.addEventListener('input',e=>{
   else if(el.dataset.dis==='n'){ const i=Number(el.dataset.i); S.settings.dis[i]={...S.settings.dis[i],n:el.value}; saveSettings(); }
 });
 document.addEventListener('submit',e=>{
+  if(e.target.id==='cu-form'){ e.preventDefault();
+    const title=$('cu-title').value.trim(), date=$('cu-date').value; if(!title||!date) return;
+    const c={...S.editCustom,title,date,rep:$('cu-rep').value,note:$('cu-note').value.trim()};
+    if(!c.id){ c.id='u'+Date.now().toString(36)+Math.random().toString(36).slice(2,5); c.created=new Date().toISOString(); }
+    const isNew=!S.editCustom.id; saveCustom(c); S.editCustom=null; render(); toast((isNew?'已加入：':'已儲存：')+title); return; }
   if(e.target.id!=='newcase') return;
   e.preventDefault();
   const name=$('nc-name').value.trim(); if(!name){ $('nc-name').focus(); return; }
