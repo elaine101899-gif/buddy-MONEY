@@ -403,7 +403,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 20:42</div>
+<div class="ver" id="ver">版本 115/11/24 20:54</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -2430,6 +2430,14 @@ function careMonths(r,y,q){ // 這一季符合資格的月份
   const out=[]; for(let m=q*3-2;m<=q*3;m++){ const ym=`${y+1911}-${String(m).padStart(2,'0')}`; if(r.from&&ym<r.from) continue; if(r.to&&ym>r.to) continue; out.push(m); } return out;
 }
 const careDefaultAmt=(r,y,q)=>careMonths(r,y,q).length*(CARE_RATE+(r.dis?CARE_DIS:0));
+/* 一年一份印領清冊：第 1 頁 10–12 月、第 2 頁 1–3 月、第 3 頁 4–6 月、第 4 頁 7–9 月 */
+const cycleOf=(y,q)=>q===4?y+1:y;                       // 清冊年度
+const pageNo=q=>q===4?1:q+1;
+const cycleQs=cy=>[[cy-1,4],[cy,1],[cy,2],[cy,3]];
+function batchRowsFor(y,q){ const b=(CARE.d.batches||{})[`${y}-q${q}`]||{}, amt=b.amt||{}, skip=b.skip||{};
+  return CARE.d.list.map(r=>{ const ms=careMonths(r,y,q), def=careDefaultAmt(r,y,q), a=amt[r.id]!==undefined&&amt[r.id]!==''?n0(amt[r.id]):def;
+    return {r,ms,def,amt:a,skip:skip[r.id]!==undefined?!!skip[r.id]:!ms.length}; }); }
+const batchTotal=(y,q)=>batchRowsFor(y,q).filter(x=>!x.skip).reduce((a,x)=>a+x.amt,0);
 function batchRows(){ const b=batch(); return CARE.d.list.map(r=>{ const ms=careMonths(r,CARE.y,CARE.q); const def=careDefaultAmt(r,CARE.y,CARE.q);
   const amt=b.amt[r.id]!==undefined&&b.amt[r.id]!==''?n0(b.amt[r.id]):def; return {r,ms,def,amt,skip:b.skip[r.id]!==undefined?!!b.skip[r.id]:!ms.length}; }); }
 const qRange=q=>`${q*3-2}-${q*3}月`;
@@ -2445,12 +2453,14 @@ function viewCare(){
   const qs=[]; for(let y=ROC_NOW-1;y<=ROC_NOW+1;y++) for(let q=1;q<=4;q++) if(new Date(y+1911,q*3-1,1)>=new Date(2026,5,1)) qs.push([y,q]);
   const canPrint=/github\.io$/.test(location.hostname)||location.protocol==='file:';
   const pay=`<section class="card">
-    <div class="sec-h"><h2>1. 每季發放・印領清冊</h2><span class="meta">${py} 年 ${pm} 月發放</span></div>
+    <div class="sec-h"><h2>1. 每季發放・印領清冊</h2><span class="meta">${py} 年 ${pm} 月發放・${cycleOf(CARE.y,CARE.q)} 年度第 ${pageNo(CARE.q)} 頁／共 4 頁</span></div>
     <div class="form" style="margin-top:0;padding-top:0;border-top:0">
       <div class="field"><label for="c-b">發放哪一季</label><select id="c-b">${qs.map(([y,q])=>{ const [a,m]=payMonthOf(y,q); return `<option value="${y}-${q}" ${y===CARE.y&&q===CARE.q?'selected':''}>${y} 年 ${qRange(q)}（${a} 年 ${m} 月發）</option>`; }).join('')}</select></div>
       <div class="field"><label for="c-date">請領日期</label><input id="c-date" type="date" data-cb="date" value="${esc(b.date||isoOf(new Date(py+1911,pm-1,25)))}"></div>
-      ${canPrint?`<button class="btn" data-act="c-print">列印印領清冊</button>`:''}
-      <button class="btn ${canPrint?'ghost':''}" data-act="c-pdf" ${CARE.busy?'disabled':''}>${CARE.busy||'下載印領清冊 PDF'}</button>
+      ${canPrint?`<button class="btn" data-act="c-print">列印第 ${pageNo(CARE.q)} 頁</button>`:''}
+      <button class="btn ${canPrint?'ghost':''}" data-act="c-pdf" ${CARE.busy?'disabled':''}>${CARE.busy||`下載第 ${pageNo(CARE.q)} 頁 PDF`}</button>
+      ${canPrint?`<button class="btn ghost" data-act="c-printall">列印整年 4 頁</button>`:''}
+      <button class="btn ghost" data-act="c-pdfall" ${CARE.busy?'disabled':''}>下載整年 4 頁</button>
     </div>
     <div class="rlist">${rows.length?rows.map(x=>rowCard('c-pay',`data-id="${esc(x.r.id)}"`,`${esc(x.r.emp)}／${esc(x.r.kid)}`,
       `${x.ms.length?x.ms.join('、')+' 月':'不在期間內'}${x.amt!==x.def&&!x.skip?'・已手動改金額':''}`,
@@ -2487,22 +2497,26 @@ function viewCare(){
 }
 
 /* ── 印領清冊頁面 ── */
-function pageCare(){
-  const p=OPT.profile, b=batch(), on=batchRows().filter(x=>!x.skip), [ry,rm,rd]=rocParts(b.date||isoOf(new Date(payMonthOf(CARE.y,CARE.q)[0]+1911,payMonthOf(CARE.y,CARE.q)[1]-1,25)));
+function pageCare(y,q){
+  y=y??CARE.y; q=q??CARE.q;
+  const p=OPT.profile, b=(CARE.d.batches||{})[`${y}-q${q}`]||{}, on=batchRowsFor(y,q).filter(x=>!x.skip);
+  const [py,pm]=payMonthOf(y,q), [ry,rm,rd]=rocParts(b.date||isoOf(new Date(py+1911,pm-1,25)));
+  const cy=cycleOf(y,q), pn=pageNo(q), last=pn===4;
   const n=Math.max(on.length,3), total=on.reduce((a,x)=>a+x.amt,0);
+  const grand=last?cycleQs(cy).reduce((a,[yy,qq])=>a+batchTotal(yy,qq),0):0;
   const rows=Array.from({length:n},(_,i)=>{ const x=on[i];
-    return `<tr style="height:66px"><td class="c">${x?i+1:''}</td><td class="c">${x?`${esc(x.r.emp)}<br>${esc((x.r.phone||'').replace(/-/g,''))}`:''}</td><td class="c">${x?esc(x.r.kid):''}</td><td class="c">${x?`${CARE.y}/ ${qRange(CARE.q).replace('月',' 月')}<br>育兒津貼`:''}</td><td class="c">${x?x.amt:''}</td><td></td></tr>`; }).join('');
+    return `<tr style="height:66px"><td class="c">${x?i+1:''}</td><td class="c">${x?`${esc(x.r.emp)}<br>${esc((x.r.phone||'').replace(/-/g,''))}`:''}</td><td class="c">${x?esc(x.r.kid):''}</td><td class="c">${x?`${y}/ ${qRange(q).replace('月',' 月')}<br>育兒津貼`:''}</td><td class="c">${x?x.amt:''}</td><td></td></tr>`; }).join('');
   return `<div class="pg p" style="padding:70px 64px 0">
     <div style="text-align:center;font-size:26px;letter-spacing:2px;margin-bottom:14px">${esc(p.unit||'')}</div>
-    <div style="text-align:center;font-size:17px;letter-spacing:1px;margin-bottom:26px">${CARE.y} 年度雇主補助受僱者子女育兒補貼印領清冊</div>
+    <div style="text-align:center;font-size:17px;letter-spacing:1px;margin-bottom:26px">${cy} 年度雇主補助受僱者子女育兒補貼印領清冊</div>
     <div style="text-align:right;font-size:16px;margin-bottom:8px">請領日期：${ry} 年 ${rm} 月 ${rd} 日</div>
     <table class="ft" style="width:666px;font-size:16px"><colgroup><col style="width:72px"><col style="width:120px"><col style="width:104px"><col style="width:132px"><col style="width:112px"><col style="width:126px"></colgroup>
       <tr style="height:52px"><td class="c">序號</td><td class="c">受僱者姓名<br>(含連絡電話)</td><td class="c">子女姓名</td><td class="c">受領事由</td><td class="c">補貼金額(元)</td><td class="c">受領人中文簽章</td></tr>
       ${rows}
       <tr style="height:30px"><td colspan="6">合計：${on.length} 位</td></tr>
     </table>
-    <div style="font-size:18px;margin:34px 0 0 360px;line-height:2.6">小計：${money(total)} 元<br>承辦人：<br>單位主管：</div>
-    <div style="position:absolute;left:0;right:0;bottom:40px;text-align:center;font-size:15px">第 1 頁／共 1 頁</div>
+    <div style="font-size:18px;margin:34px 0 0 360px;line-height:2.6">小計：${money(total)} 元${last?`<br>總計：${money(grand)} 元`:''}<br>承辦人：${last?'<br>單位主管：':''}</div>
+    <div style="position:absolute;left:0;right:0;bottom:40px;text-align:center;font-size:15px">第 ${pn} 頁／共 4 頁</div>
   </div>`;
 }
 async function carePdf(settle){
@@ -2510,10 +2524,14 @@ async function carePdf(settle){
     CARE.busy='產生中…'; render(); await libs();
     const {PDFDocument}=window.PDFLib, out=await PDFDocument.create(), stage=$('pdfstage');
     if(!settle){
-      stage.innerHTML=pageCare(); const el=stage.firstElementChild;
-      try{ if(!kaiOk()) await document.fonts.load('20px "LXGW WenKai TC"', el.textContent); await document.fonts.ready; }catch(e){}
-      const c=await window.html2canvas(el,{scale:2,backgroundColor:'#ffffff',logging:false});
-      out.addPage([595.28,841.89]).drawImage(await out.embedJpg(dataUrlBytes(c.toDataURL('image/jpeg',.92))),{x:0,y:0,width:595.28,height:841.89}); stage.innerHTML='';
+      const pages=settle===false&&CARE.all?cycleQs(cycleOf(CARE.y,CARE.q)):[[CARE.y,CARE.q]];
+      for(const [yy,qq] of pages){
+        stage.innerHTML=pageCare(yy,qq); const el=stage.firstElementChild;
+        try{ if(!kaiOk()) await document.fonts.load('20px "LXGW WenKai TC"', el.textContent); await document.fonts.ready; }catch(e){}
+        const c=await window.html2canvas(el,{scale:2,backgroundColor:'#ffffff',logging:false});
+        out.addPage([595.28,841.89]).drawImage(await out.embedJpg(dataUrlBytes(c.toDataURL('image/jpeg',.92))),{x:0,y:0,width:595.28,height:841.89});
+      }
+      stage.innerHTML='';
     } else {
       const Y=CARE.d.years[CARE.ky]||{files:{}};
       for(const s of CARE_SLOTS) for(const f of [...((Y.files||{})[s.k]||[]),...(CARE.local[CARE.ky+':'+s.k]||[])]){
@@ -2527,7 +2545,7 @@ async function carePdf(settle){
     }
     const bytes=await out.save();
     if(OPT.downloads===undefined){ try{ OPT.downloads=await claude.use('downloads'); }catch(e){ OPT.downloads=null; } }
-    const name=settle?`${CENTERS[S.center].name}_托兒措施補助核銷_${CARE.ky}年.pdf`:`${CENTERS[S.center].name}_育兒補貼印領清冊_${CARE.y}年${qRange(CARE.q)}.pdf`;
+    const name=settle?`${CENTERS[S.center].name}_托兒措施補助核銷_${CARE.ky}年.pdf`:CARE.all?`${CENTERS[S.center].name}_育兒補貼印領清冊_${cycleOf(CARE.y,CARE.q)}年度_共4頁.pdf`:`${CENTERS[S.center].name}_育兒補貼印領清冊_${CARE.y}年${qRange(CARE.q)}_第${pageNo(CARE.q)}頁.pdf`;
     if(!OPT.downloads) toast('這個畫面不能下載檔案，請在電腦瀏覽器開啟');
     else { try{ await OPT.downloads.save({filename:name,data:bytes}); toast(`已下載 ${name}`); }catch(e){ if(e&&e.code!=='declined') toast('下載失敗，請再按一次'); } }
   }catch(e){ console.error(e); toast('PDF 產生失敗，請再試一次'); }
@@ -2565,7 +2583,7 @@ async function careXlsx(){
 }
 function carePrint(){
   let pa=$('printarea'); if(!pa){ pa=document.createElement('div'); pa.id='printarea'; document.body.appendChild(pa); }
-  pa.innerHTML=pageCare(); setTimeout(()=>window.print(),100);
+  pa.innerHTML=(CARE.all?cycleQs(cycleOf(CARE.y,CARE.q)).map(([y,q])=>pageCare(y,q)).join('<div style="break-after:page"></div>'):pageCare()); setTimeout(()=>window.print(),100);
 }
 async function careUpload(k,files){
   const a=db?await getAssets():null, Y=CARE.d.years[CARE.ky]=CARE.d.years[CARE.ky]||{files:{}}; Y.files=Y.files||{}; CARE.busy='上傳中…'; render();
@@ -2584,9 +2602,11 @@ document.addEventListener('click',e=>{
     openModal({title:`${x.r.emp}／${x.r.kid}`, note:`${CARE.y} 年 ${qRange(CARE.q)}：符合 ${x.ms.length} 個月，自動算 ${money(x.def)} 元`, value:{on:!x.skip,amt:b.amt[x.r.id]??''},
       fields:[{k:'on',label:'這季發放',type:'check'},{k:'amt',label:'補貼金額（空白＝自動算）',type:'number',ph:String(x.def)}],
       onSave:v=>{ b.skip[x.r.id]=!v.on; b.amt[x.r.id]=v.amt; saveCare(); render(); } }); }
-  else if(a==='c-pdf') carePdf(false);
+  else if(a==='c-pdf'){ CARE.all=false; carePdf(false); }
+  else if(a==='c-pdfall'){ CARE.all=true; carePdf(false); }
+  else if(a==='c-printall'){ CARE.all=true; carePrint(); }
   else if(a==='c-settle') carePdf(true);
-  else if(a==='c-print') carePrint();
+  else if(a==='c-print'){ CARE.all=false; carePrint(); }
   else if(a==='c-xlsx') careXlsx();
   else if(a==='c-add'||a==='c-edit'){ const isNew=a==='c-add', i=+el.dataset.i, r=isNew?{esex:'女',ksex:'男',age:1,dis:false,from:`${ROC_NOW+1911}-${String(M_NOW).padStart(2,'0')}`}:d.list[i];
     openModal({title:isNew?'新增員工子女':'編輯員工子女', value:r, fields:CARE_FIELDS, saveText:isNew?'加入名單':'儲存',
