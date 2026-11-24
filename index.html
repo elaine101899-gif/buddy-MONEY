@@ -337,7 +337,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 18:23</div>
+<div class="ver" id="ver">版本 115/11/24 18:40</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -582,14 +582,18 @@ function softRender(){
 }
 document.addEventListener('focusout',()=>{ if(pendingRender){ setTimeout(()=>{ if(pendingRender){ pendingRender=false; softRender(); } },50); } });
 
+/* 目前沒有需求的事項（例如沒有身障兒）：還是顯示，但算完成 */
+const naTask=t=>/^dis-/.test(t.id)&&!!(OPT.profile&&OPT.profile.disNone);
+const isDone=(t,y)=>naTask(t)||!!(S.checks[y]||{})[t.id];
 function taskHTML(t,y,showWhen){
-  const ck=S.checks[y]||{}, done=!!ck[t.id];
+  const ck=S.checks[y]||{}, na=naTask(t), done=na||!!ck[t.id];
   const key=y+':'+t.id, open=S.open.has(key);
   const dn=t.docs?t.docs.filter((_,i)=>ck[t.id+'~'+i]).length:0;
   const dl=t.day?Math.round((new Date(y+1911,t.m-1,t.day)-today)/864e5):daysLeft(y,t.m);
   const dueTxt=t.day?`${t.m}/${t.day} 前`:'月底前';
   let chip='';
-  if(done) chip='<span class="chip ok">完成</span>';
+  if(na) chip='<span class="chip when">目前沒有身障兒・不用申請</span>';
+  else if(done) chip='<span class="chip ok">完成</span>';
   else if(y===ROC_NOW && t.m===M_NOW || y>ROC_NOW || (y===ROC_NOW && t.m>M_NOW)) chip = dl>=0 && dl<=45 ? `<span class="chip due">${dueTxt}・剩 <span class="num">${dl}</span> 天</span>` : (dl<0&&!done&&t.day?'<span class="chip late">已過期限</span>':'');
   else chip='<span class="chip late">已過期限</span>';
   const when = (showWhen ? `<span class="chip when">${y} 年 ${t.m} 月${t.day?' '+t.day+' 日':''}</span>` : (t.day?`<span class="chip when">${t.m}/${t.day}</span>`:'')) + (t.custom?`<span class="chip when">自訂${t.custom.rep&&t.custom.rep!=='once'?'・'+REP[t.custom.rep]:''}</span><button class="docbtn" data-act="cu-edit" data-id="${esc(t.custom.id)}" style="padding:0 10px">編輯</button>`:'');
@@ -600,7 +604,7 @@ function taskHTML(t,y,showWhen){
   if(t.id.startsWith('dis-')){ const q=t.m===1?4:(t.m-1)/3, yy=t.m===1?y-1:y; calc=`<div class="calcline"><a href="#dis" data-act="godis" data-y="${yy}" data-q="${q}">填寫名冊、產生 PDF →</a></div>`; }
   if(false) calc = disTotal() ? `<div class="calcline">目前試算：<span class="num">$${money(disTotal())}</span>（<a href="#calc">試算</a>）</div>` : '';
   return `<div class="task ${done?'done':''}">
-    <label class="tk"><input type="checkbox" id="tk-${y}-${t.id}" data-act="tick" data-y="${y}" data-k="${t.id}" ${done?'checked':''}><span class="tt">${t.custom?esc(t.title):t.title}</span></label>
+    <label class="tk"><input type="checkbox" id="tk-${y}-${t.id}" data-act="tick" data-y="${y}" data-k="${t.id}" ${done?'checked':''} ${na?'disabled':''}><span class="tt">${t.custom?esc(t.title):t.title}</span></label>
     ${(chip||when)?`<div class="tmeta">${when}${chip}</div>`:''}
     ${t.note?`<div class="tn">${t.custom?esc(t.note):t.note}</div>`:''}
     ${calc}
@@ -621,7 +625,7 @@ function overdue(){
   const out=[];
   for(let k=1;k<=2;k++){
     let m=M_NOW-k, y=ROC_NOW; if(m<1){m+=12;y--;}
-    activeTasks(m,y).forEach(t=>{ if(!(S.checks[y]||{})[t.id]) out.push({t,y,m}); });
+    activeTasks(m,y).forEach(t=>{ if(!isDone(t,y)) out.push({t,y,m}); });
   }
   return out;
 }
@@ -629,7 +633,7 @@ function caseProgress(c){ const f=FLOWS[c.type]; const ks=stepKeys(f); const d=k
 
 function viewHome(){
   const up=upcoming(), now=up.filter(x=>x.k===0), later=up.filter(x=>x.k>0);
-  const nowDone=now.filter(x=>(S.checks[x.y]||{})[x.t.id]).length;
+  const nowDone=now.filter(x=>isDone(x.t,x.y)).length;
   const od=overdue();
   const active=S.cases.filter(c=>!c.closed).sort((a,b)=>(b.created||'').localeCompare(a.created||''));
   const cname=CENTERS[S.center].name;
@@ -682,7 +686,7 @@ function customForm(){
 }
 function viewCalendar(){
   const y=S.year, hol=HOLIDAYS[y]||{};
-  const allT=Array.from({length:12},(_,i)=>activeTasks(i+1,y)).flat(), allDone=allT.filter(t=>(S.checks[y]||{})[t.id]).length;
+  const allT=Array.from({length:12},(_,i)=>activeTasks(i+1,y)).flat(), allDone=allT.filter(t=>isDone(t,y)).length;
   return `
   <section class="card">
     <div class="sec-h" style="margin-bottom:6px"><h2>${y} 年行事曆</h2><span class="meta">已完成 <span class="num">${allDone}/${allT.length}</span> 件事項</span></div>
@@ -696,7 +700,7 @@ function viewCalendar(){
   <div class="months">
     ${Array.from({length:12},(_,i)=>i+1).map(m=>{
       const ts=activeTasks(m,y), h=hol[m]||[], pre=new Date(y+1911,m,0)<foundedDate();
-      const d=ts.filter(t=>(S.checks[y]||{})[t.id]).length;
+      const d=ts.filter(t=>isDone(t,y)).length;
       const isNow = y===ROC_NOW && m===M_NOW;
       return `<section class="card month ${isNow?'now':''}" id="m-${m}" ${pre?'style="opacity:.55"':''}>
         <div class="mh"><div class="mnum">${m}</div><div><h3>${m} 月份${isNow?'・本月':''}</h3><div class="mp">${pre?'中心尚未成立':ts.length?`事項 ${d}/${ts.length}`:'沒有固定事項'}</div></div></div>
@@ -1466,6 +1470,10 @@ function viewDis(){
   const head=`<section class="card">
     <div class="eyebrow">收托身障暨疑似發展遲緩幼兒・每季</div>
     <div class="sec-h"><h2>身障補助申請</h2><span class="meta">${DIS.q===4?'隔年 1 月底前繳':`${DIS.q*3+1} 月底前繳`}</span></div>
+    <div class="${p.disNone?'tip':''}" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <label class="tk" style="margin:0"><input type="checkbox" id="d-none" ${p.disNone?'checked':''}><span class="tt">目前沒有身障兒（沒有需求）</span></label>
+      <span class="muted" style="font-size:13px">${p.disNone?'行事曆上的身障補助會標成「不用申請」，不算沒完成。之後有身障兒入托，取消勾選就恢復。':'勾選後，行事曆上的身障補助會標成不用申請，但還是會留著。'}</span>
+    </div>
     <div class="form" style="margin-top:0;padding-top:0;border-top:0">
       <div class="field"><label for="d-y">年度</label><select id="d-y">${yrs.map(y=>`<option value="${y}" ${y===DIS.y?'selected':''}>${y} 年</option>`).join('')}</select></div>
       <div class="field"><label for="d-qq">季別</label><select id="d-qq">${[1,2,3,4].map(q=>`<option value="${q}" ${q===DIS.q?'selected':''} ${qOk(DIS.y,q)?'':'disabled'}>第 ${q} 季（${q*3-2}–${q*3} 月）</option>`).join('')}</select></div>
@@ -1728,6 +1736,7 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('change',e=>{
   const el=e.target; if(S.tab!=='dis'||!$('main').contains(el)) return;
+  if(el.id==='d-none'){ OPT.profile.disNone=el.checked; saveProfile(); toast(el.checked?'已設定：目前沒有身障兒':'已恢復身障補助申請'); setTimeout(softRender,0); return; }
   if(el.id==='d-y'||el.id==='d-qq'){ DIS.y=+$('d-y').value; DIS.q=+$('d-qq').value; if(!qOk(DIS.y,DIS.q)){ DIS.q=[1,2,3,4].find(q=>qOk(DIS.y,q))||DIS.q; } disSubscribe(); disLoadPrev(); render(); return; }
   if(el.dataset.dslot&&el.files.length){ disUpload(el.dataset.dslot,[...el.files]); el.value=''; return; }
   if(el.dataset.pb!==undefined&&el.files[0]){ passbookUpload(el.dataset.pb,el.files[0]); el.value=''; return; }
