@@ -421,7 +421,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 21:15</div>
+<div class="ver" id="ver">版本 115/11/24 22:38</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -999,8 +999,8 @@ function periodMonths(s,e){ const a=parseDate(s),b=parseDate(e); if(!a||!b||b<a)
 const qLabelOf=qs=>qs.length>1?`${qs[0]}-${qs[qs.length-1]}`:String(qs[0]||'');
 const qCnOf=qs=>qs.length>1?`${QCN[qs[0]]}至${QCN[qs[qs.length-1]]}`:QCN[qs[0]||1];
 function periodField(pre,y,q,d){ const [s,e]=periodOf(y,q,d), custom=!!(d.pStart||d.pEnd);
-  return `<div class="field"><label for="${pre}-ps">申請期間（起）</label><input type="date" id="${pre}-ps" data-period="pStart" data-pre="${pre}" value="${esc(s)}"></div>
-  <div class="field"><label for="${pre}-pe">申請期間（迄）</label><input type="date" id="${pre}-pe" data-period="pEnd" data-pre="${pre}" value="${esc(e)}"></div>
+  return `<div class="field" style="flex:1 1 130px"><label for="${pre}-ps">申請期間（起）</label><input type="date" style="width:100%" id="${pre}-ps" data-period="pStart" data-pre="${pre}" value="${esc(s)}"></div>
+  <div class="field" style="flex:1 1 130px"><label for="${pre}-pe">申請期間（迄）</label><input type="date" style="width:100%" id="${pre}-pe" data-period="pEnd" data-pre="${pre}" value="${esc(e)}"></div>
   ${custom?`<button class="btn ghost sm" data-act="${pre}-preset" style="align-self:flex-end">恢復整季</button>`:''}`; }
 const isoOf=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const isoToday=()=>{ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
@@ -1104,12 +1104,10 @@ function viewOpt(){
     <div class="form" style="margin-top:0;padding-top:0;border-top:0">
       <div class="field"><label for="o-y">年度</label><select id="o-y">${yrs.map(y=>`<option value="${y}" ${y===OPT.y?'selected':''}>${y} 年</option>`).join('')}</select></div>
       <div class="field"><label for="o-q">季別</label><select id="o-q">${[1,2,3,4].map(q=>`<option value="${q}" ${q===OPT.q?'selected':''} ${qOk(OPT.y,q)?'':'disabled'}>第 ${q} 季（${q*3-2}–${q*3} 月）</option>`).join('')}</select></div>
-      <button class="btn" data-act="o-pdf" ${OPT.busy?'disabled':''}>${OPT.busy||'下載整份 PDF'}</button>
-      <button class="btn ghost" data-act="o-preview">${OPT.preview?'收起預覽':'預覽表格'}</button>
+      <div class="pact" style="order:99;flex-basis:100%;margin:4px 0 0"><span class="pg2"><span class="pact-l">PDF</span><button class="docbtn" data-act="o-pdf" ${OPT.busy?'disabled':''}>${OPT.busy||'下載整份'}</button><button class="docbtn" data-act="o-preview">${OPT.preview?'收起預覽':'預覽'}</button></span></div>
       ${d?periodField('o',OPT.y,OPT.q,d):''}
     </div>
-    ${kaiOk()?`<p style="margin:10px 0 0;font-size:13px" class="muted"><span class="chip ok">標楷體</span>　這台裝置有標楷體，PDF 的表格會用標楷體。</p>`
-      :`<div class="tip" style="margin-top:10px"><b>這台裝置沒有標楷體</b>　PDF 會改用相近的楷體。要用標楷體，請在 Windows 電腦（內建標楷體）產生 PDF；Mac 可在「字體簿」下載「BiauKai 標楷體」。</div>`}
+    ${kaiOk()?'':`<p class="muted" style="margin:8px 0 0;font-size:12px">這台裝置沒有標楷體，PDF 會用相近的楷體；要標楷體請用 Windows 電腦產生。</p>`}
   </section>`;
   if(!d) return head+`<div class="empty">${CH.ding}<span>讀取這一季的資料中…</span></div>`;
   const missingProf=PROFILE_FIELDS.filter(([k])=>!p[k]).length;
@@ -1614,11 +1612,10 @@ function viewDis(){
     <div class="form" style="margin-top:0;padding-top:0;border-top:0">
       <div class="field"><label for="d-y">年度</label><select id="d-y">${yrs.map(y=>`<option value="${y}" ${y===DIS.y?'selected':''}>${y} 年</option>`).join('')}</select></div>
       <div class="field"><label for="d-qq">季別</label><select id="d-qq">${[1,2,3,4].map(q=>`<option value="${q}" ${q===DIS.q?'selected':''} ${qOk(DIS.y,q)?'':'disabled'}>第 ${q} 季（${q*3-2}–${q*3} 月）</option>`).join('')}</select></div>
-      <button class="btn" data-act="d-pdf" ${DIS.busy?'disabled':''}>${DIS.busy||'下載整份 PDF'}</button>
-      <button class="btn ghost" data-act="d-preview">${DIS.preview?'收起預覽':'預覽表格'}</button>
+      <div class="pact" style="order:99;flex-basis:100%;margin:4px 0 0"><span class="pg2"><span class="pact-l">PDF</span><button class="docbtn" data-act="d-pdf" ${DIS.busy?'disabled':''}>${DIS.busy||'下載整份'}</button><button class="docbtn" data-act="d-preview">${DIS.preview?'收起預覽':'預覽'}</button></span></div>
       ${DIS.d?periodField('d',DIS.y,DIS.q,DIS.d):''}
     </div>
-    ${kaiOk()?`<p style="margin:10px 0 0;font-size:13px" class="muted"><span class="chip ok">標楷體</span>　這台裝置有標楷體，PDF 的表格會用標楷體。</p>`:`<div class="tip" style="margin-top:10px"><b>這台裝置沒有標楷體</b>　PDF 會改用相近的楷體。要用標楷體，請在 Windows 電腦產生 PDF。</div>`}
+    ${kaiOk()?'':`<p class="muted" style="margin:8px 0 0;font-size:12px">這台裝置沒有標楷體，PDF 會用相近的楷體；要標楷體請用 Windows 電腦產生。</p>`}
   </section>`;
   if(!d) return head+`<div class="empty">${CH.ding}<span>讀取這一季的資料中…</span></div>`;
   const T=disTotals(d), cgs=caregivers(d);
@@ -2212,10 +2209,9 @@ function viewFac(){
     <div class="form" style="margin-top:0;padding-top:0;border-top:0">
       <div class="field"><label for="f-y">年度</label><select id="f-y">${yrs.map(y=>`<option value="${y}" ${y===FAC.y?'selected':''}>${y} 年</option>`).join('')}</select></div>
       <div class="seg" role="group" aria-label="期別" style="align-self:flex-end"><button data-act="f-stage" data-v="1" aria-pressed="${FAC.stage===1}">第一期申請（3 月）</button><button data-act="f-stage" data-v="2" aria-pressed="${FAC.stage===2}">第二期核銷（11 月）</button></div>
-      <button class="btn" data-act="f-pdf" ${FAC.busy?'disabled':''}>${FAC.busy||'下載整份 PDF'}</button>
-      <button class="btn ghost" data-act="f-preview">${FAC.preview?'收起預覽':'預覽表格'}</button>
+      <div class="pact" style="order:99;flex-basis:100%;margin:4px 0 0"><span class="pg2"><span class="pact-l">PDF</span><button class="docbtn" data-act="f-pdf" ${FAC.busy?'disabled':''}>${FAC.busy||'下載整份'}</button><button class="docbtn" data-act="f-preview">${FAC.preview?'收起預覽':'預覽'}</button></span></div>
     </div>
-    ${kaiOk()?`<p style="margin:10px 0 0;font-size:13px" class="muted"><span class="chip ok">標楷體</span>　這台裝置有標楷體，PDF 的表格會用標楷體。</p>`:`<div class="tip" style="margin-top:10px"><b>這台裝置沒有標楷體</b>　PDF 會改用相近的楷體。要用標楷體，請在 Windows 電腦產生 PDF。</div>`}
+    ${kaiOk()?'':`<p class="muted" style="margin:8px 0 0;font-size:12px">這台裝置沒有標楷體，PDF 會用相近的楷體；要標楷體請用 Windows 電腦產生。</p>`}
   </section>`;
   if(!yrs.length) return head+`<div class="empty">${CH.ding}<span>中心成立後的隔年 3 月才開始申請。</span></div>`;
   if(!d) return head+`<div class="empty">${CH.ding}<span>讀取中…</span></div>`;
