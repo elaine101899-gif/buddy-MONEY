@@ -286,6 +286,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
       <a href="#visit" data-tab="visit">參觀預約</a>
       <a href="#opt" data-tab="opt">優化補助申請</a>
       <a href="#dis" data-tab="dis">身障補助申請</a>
+      <a href="#fac" data-tab="fac">設施設備補助</a>
       <a href="#calc" data-tab="calc">補助試算</a>
     </nav>
   </div>
@@ -293,7 +294,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 17:04</div>
+<div class="ver" id="ver">版本 115/11/24 17:16</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -447,7 +448,7 @@ function saveLocal(){ lsSet(localKey(), JSON.stringify({checks:S.checks,cases:S.
 function subscribe(){
   unsubs.forEach(u=>{try{u()}catch(e){}}); unsubs=[];
   S.checks={}; S.yearExists={}; S.cases=[]; S.custom=[]; S.visits=[]; S.settings={...DEFAULT_SETTINGS};
-  if(!db){ loadLocal(); setMode('local'); optSubscribe(); profSubscribe(); disSubscribe(); DIS.prevKids=undefined; render(); return; }
+  if(!db){ loadLocal(); setMode('local'); optSubscribe(); profSubscribe(); disSubscribe(); facSubscribe(); DIS.prevKids=undefined; render(); return; }
   setMode('loading'); render();
   clearTimeout(loadTimer);
   loadTimer=setTimeout(()=>{ if(S.mode==='loading') setMode('slow'); },10000);
@@ -470,7 +471,7 @@ function subscribe(){
     if(S.center!==c) return;
     S.cases=s.docs.map(d=>({id:d.id,...d.data()})); done(s); softRender();
   },err));
-  optSubscribe(); profSubscribe(); disSubscribe(); DIS.prevKids=undefined;
+  optSubscribe(); profSubscribe(); disSubscribe(); facSubscribe(); DIS.prevKids=undefined;
   unsubs.push(db.doc(`${base()}/settings/main`).onSnapshot(s=>{
     if(S.center!==c) return;
     S.settings={...DEFAULT_SETTINGS,...(s.data()||{})}; S.settings.dis=(S.settings.dis||[]).filter(Boolean); done(s);
@@ -551,8 +552,7 @@ function taskHTML(t,y,showWhen){
   const when = (showWhen ? `<span class="chip when">${y} 年 ${t.m} 月${t.day?' '+t.day+' 日':''}</span>` : (t.day?`<span class="chip when">${t.m}/${t.day}</span>`:'')) + (t.custom?`<span class="chip when">自訂${t.custom.rep&&t.custom.rep!=='once'?'・'+REP[t.custom.rep]:''}</span><button class="docbtn" data-act="cu-edit" data-id="${esc(t.custom.id)}" style="padding:0 10px">編輯</button>`:'');
   let calc='';
   const g=grant();
-  if(t.calc==='p1') calc = g.kids ? `<div class="calcline">第一期申請金額：<span class="num">$${money(g.p1)}</span>（<a href="#calc">試算</a>）</div>` : `<div class="calcline"><a href="#calc">先到補助試算填收托人數</a></div>`;
-  if(t.calc==='p2') calc = g.kids ? `<div class="calcline">第二期申請金額：<span class="num">$${money(g.p2)}</span>（<a href="#calc">試算</a>）</div>` : `<div class="calcline"><a href="#calc">先到補助試算填收托人數</a></div>`;
+  if(t.calc==='p1'||t.calc==='p2') calc=`<div class="calcline"><a href="#fac" data-act="gofac" data-y="${y}" data-s="${t.calc==='p1'?1:2}">填寫${t.calc==='p1'?'第一期申請':'第二期核銷'}、產生 PDF →</a></div>`;
   if(t.id.startsWith('opt-')){ const q=t.m===1?4:(t.m-1)/3, yy=t.m===1?y-1:y; calc=`<div class="calcline"><a href="#opt" data-act="goopt" data-y="${yy}" data-q="${q}">填寫申請表、產生 PDF →</a></div>`; }
   if(t.id.startsWith('dis-')){ const q=t.m===1?4:(t.m-1)/3, yy=t.m===1?y-1:y; calc=`<div class="calcline"><a href="#dis" data-act="godis" data-y="${yy}" data-q="${q}">填寫名冊、產生 PDF →</a></div>`; }
   if(false) calc = disTotal() ? `<div class="calcline">目前試算：<span class="num">$${money(disTotal())}</span>（<a href="#calc">試算</a>）</div>` : '';
@@ -763,9 +763,10 @@ function render(){
   $('brandName').textContent=cn.name+' 托育補助小幫手';
   $('headMascot').innerHTML=CH[cn.mascot];
   document.querySelectorAll('nav a').forEach(a=>a.setAttribute('aria-current',a.dataset.tab===S.tab?'page':'false'));
-  const v={home:viewHome,calendar:viewCalendar,cases:viewCases,calc:viewCalc,opt:viewOpt,dis:viewDis,visit:viewVisit}[S.tab]||viewHome;
+  const v={home:viewHome,calendar:viewCalendar,cases:viewCases,calc:viewCalc,opt:viewOpt,dis:viewDis,visit:viewVisit,fac:viewFac}[S.tab]||viewHome;
   $('main').innerHTML=v();
   if(S.tab==='calc') renderCalcOut();
+  if(S.tab==='fac'){ renderFacOut(); if(FAC.preview) renderFacPreview(); if(db&&OPT.assets===undefined) getAssets(); }
   if(S.tab==='dis'){ if(DIS.preview) renderDisPreview(); if(DIS.prevKids===undefined){ DIS.prevKids=null; disLoadPrev(); } if(db&&OPT.assets===undefined) getAssets(); }
   if(S.tab==='opt'){ if(OPT.preview) renderPreview(); if(db&&OPT.assets===undefined) getAssets().then(()=>{ if(S.tab==='opt') softRender(); }); }
 }
@@ -1873,6 +1874,271 @@ document.addEventListener('submit',e=>{
   saveVisit(v); VIS.edit=null; render(); toast(isNew?`已加入 ${v.parent} 的參觀預約`:'已儲存');
 });
 
+/* ═════════ 設施設備及營運補助（提升托育服務品質獎助） ═════════ */
+const FAC_REQ=[
+  [1,'(一)申請資料','1.領據<br>2.分期申請(核銷)表'],
+  [2,'(二)前一年度最高收托人數',''],
+  [3,'(三)托嬰中心托育人員固定薪資：未滿3年3萬3,200元、3年至未滿6年3萬6,200元、6年以上3萬9,200元','1.薪資清冊<br>2.薪資匯款證明<br>3.員工簽收領據(無匯款證明者)<br>4.營運費差額清冊(採專案認定者需檢附)'],
+  [4,'(四)雇主應負勞、健保','1.勞、健保繳款證明<br>2.投保單位被保險人名冊'],
+  [5,'(五)雇主提撥勞退準備金費用','1.勞退繳款證明<br>2.提繳名冊'],
+  [6,'(六)財務報表','1.當年度1月至12月預算表<br>2.前一年度收支餘絀結算表<span style="color:#c00">(申請當年度成立者，無須檢附)</span>'],
+  [7,'(七)其他','']
+];
+const FAC_SLOTS=[
+  {k:'roster',label:'收托名冊（最高收托那個月 1 日）',g:'(二)'},
+  {k:'payroll',label:'薪資清冊（社會局版本）',g:'(三)'},
+  {k:'payproof',label:'薪資匯款證明',g:'(三)'},
+  {k:'sign',label:'員工簽收領據（無匯款證明者）',g:'(三)'},
+  {k:'diff',label:'營運費差額清冊',g:'(三)',when:d=>d.appType==='project'},
+  {k:'insproof',label:'勞、健保繳款證明',g:'(四)'},
+  {k:'insroster',label:'投保單位被保險人名冊',g:'(四)'},
+  {k:'penproof',label:'勞退繳款證明',g:'(五)'},
+  {k:'penroster',label:'提繳名冊',g:'(五)'},
+  {k:'budget',label:'當年度 1–12 月預算表',g:'(六)'},
+  {k:'lastyear',label:'前一年度收支餘絀結算表',g:'(六)',when:()=>foundedRoc()<FAC.y},
+  {k:'opdetail',label:'營運費各類費用明細（1–10 月）',g:'核銷',when:()=>FAC.stage===2},
+  {k:'other',label:'其他附件',g:'(七)'}
+];
+const facYear0=()=>{ let y=foundedRoc(); if(new Date(y+1911,2,1)<foundedDate()) y++; return y; };
+const FAC={ y:Math.max(facYear0(),ROC_NOW), stage:(Math.max(facYear0(),ROC_NOW)>ROC_NOW||M_NOW<6)?1:2, d:null, unsub:null, local:{}, busy:'', preview:false };
+const facPath=()=>`${base()}/fac/${FAC.y}`;
+const facLocalKey=()=>`local:${S.center}:fac:${FAC.y}`;
+function facDefault(){ return {appType:'fixed', maxMonth:'', maxKids:'', rosterM:'', rosterD:'1', fac:'', op:1262000, numStyle:'cap',
+  s1:{fillDate:'',receiptDate:'',req:{1:true,2:true,3:true,4:true,5:true,6:true,7:false},other:'',files:{}},
+  s2:{fillDate:'',receiptDate:'',req:{1:true,2:true,3:true,4:true,5:true,6:true,7:false},other:'',files:{},settle:'',refund:''}}; }
+function facNorm(d){ const x=facDefault(); d=d||{}; const o=Object.assign(x,d); o.s1=Object.assign(facDefault().s1,d.s1||{}); o.s2=Object.assign(facDefault().s2,d.s2||{}); [o.s1,o.s2].forEach(s=>{ s.files=s.files||{}; s.req=s.req||{}; }); return o; }
+function facSubscribe(){
+  if(FAC.unsub){ try{FAC.unsub()}catch(e){} FAC.unsub=null; }
+  FAC.d=null; FAC.local={};
+  if(!db){ try{ FAC.d=facNorm(JSON.parse(lsGet(facLocalKey())||'null')); }catch(e){ FAC.d=facDefault(); } softRender(); return; }
+  const y=FAC.y,c=S.center;
+  FAC.unsub=db.doc(facPath()).onSnapshot(s=>{ if(FAC.y!==y||S.center!==c) return; FAC.d=facNorm(s.exists?JSON.parse(JSON.stringify(s.data())):null); if(S.tab==='fac') softRender(); },
+    ()=>{ FAC.d=FAC.d||facDefault(); if(S.tab==='fac') softRender(); });
+}
+let facTimer=null;
+function saveFac(){ if(!db){ lsSet(facLocalKey(),JSON.stringify(FAC.d)); return; } clearTimeout(facTimer); const path=facPath(), body=JSON.parse(JSON.stringify(FAC.d)); facTimer=setTimeout(()=>enqueue(path,()=>db.doc(path).set(body)),700); }
+const facStage=()=>FAC.d[FAC.stage===1?'s1':'s2'];
+function facCalc(d){ const facAmt=d.fac!==''&&d.fac!=null?n0(d.fac):n0(d.maxKids)*2000, op=n0(d.op), total=facAmt+op, p1=Math.round(total*0.7), p2=total-p1; return {facAmt,op,total,p1,p2}; }
+const facThis=d=>{ const c=facCalc(d); return FAC.stage===1?c.p1:c.p2; };
+const facSlotFiles=k=>[...((FAC.d&&facStage().files[k])||[]),...(FAC.local[FAC.stage+':'+k]||[])];
+async function facUpload(k,files){
+  const a=db?await getAssets():null; FAC.busy='上傳中…'; render(); const st=facStage();
+  for(const f of files){
+    if(!/pdf|image\//.test(f.type)){ toast(`「${f.name}」不是 PDF 或圖片，略過`); continue; }
+    if(a){ try{ const r=await a.upload(f); (st.files[k]=st.files[k]||[]).push({id:r.id,url:r.url,name:f.name,type:f.type||r.contentType}); }catch(e){ toast(`「${f.name}」上傳失敗`); } }
+    else (FAC.local[FAC.stage+':'+k]=FAC.local[FAC.stage+':'+k]||[]).push({file:f,name:f.name,type:f.type,local:true});
+  }
+  FAC.busy=''; saveFac(); render();
+}
+function splitAddr(a){
+  a=(a||'').replace(/^台/,'臺');
+  const h=a.match(/^(.{2,3}?)([縣市])(.{1,3}?)([鄉鎮市區])(?:(.{1,3}?)([村里]))?(?:\d+鄰)?/); if(!h) return null;
+  let r=a.slice(h[0].length);
+  const take=re=>{ const x=r.match(re); if(x){ r=r.slice(x[0].length); return x[1]; } return ''; };
+  const road=take(/^(.*?(?:路|街|大道))/)||take(/^([^\d]*)/), sec=take(/^(.{1,2})段/), lane=take(/^(\d+)巷/), alley=take(/^(\d+)弄/), no=take(/^([\d\-之]+)號/);
+  return {city:h[1],ck:h[2],dist:h[3],dk:h[4],vil:h[5]||'',road,sec,lane,alley,no,fl:r.replace(/樓$/,'')};
+}
+
+/* ── 畫面 ── */
+function viewFac(){
+  const d=FAC.d, p=OPT.profile, y0=facYear0(), yrs=[y0,y0+1,y0+2].filter(y=>y<=ROC_NOW+1);
+  const head=`<section class="card">
+    <div class="eyebrow">提升準公共托嬰中心托育服務品質獎助</div>
+    <div class="sec-h"><h2>設施設備及營運補助</h2><span class="meta">第一期 3 月申請・第二期 11 月核銷</span></div>
+    <div class="form" style="margin-top:0;padding-top:0;border-top:0">
+      <div class="field"><label for="f-y">年度</label><select id="f-y">${yrs.map(y=>`<option value="${y}" ${y===FAC.y?'selected':''}>${y} 年</option>`).join('')}</select></div>
+      <div class="seg" role="group" aria-label="期別" style="align-self:flex-end"><button data-act="f-stage" data-v="1" aria-pressed="${FAC.stage===1}">第一期申請（3 月）</button><button data-act="f-stage" data-v="2" aria-pressed="${FAC.stage===2}">第二期核銷（11 月）</button></div>
+      <button class="btn" data-act="f-pdf" ${FAC.busy?'disabled':''}>${FAC.busy||'下載整份 PDF'}</button>
+      <button class="btn ghost" data-act="f-preview">${FAC.preview?'收起預覽':'預覽表格'}</button>
+    </div>
+    ${kaiOk()?`<p style="margin:10px 0 0;font-size:13px" class="muted"><span class="chip ok">標楷體</span>　這台裝置有標楷體，PDF 的表格會用標楷體。</p>`:`<div class="tip" style="margin-top:10px"><b>這台裝置沒有標楷體</b>　PDF 會改用相近的楷體。要用標楷體，請在 Windows 電腦產生 PDF。</div>`}
+  </section>`;
+  if(!yrs.length) return head+`<div class="empty">${CH.ding}<span>中心成立後的隔年 3 月才開始申請。</span></div>`;
+  if(!d) return head+`<div class="empty">${CH.ding}<span>讀取中…</span></div>`;
+  const st=facStage(), c=facCalc(d), missing=['unit','owner','ownerId','phone','address','taxId'].filter(k=>!p[k]);
+  const pv=FAC.preview?`<section class="card"><div class="sec-h"><h2>表格預覽</h2><span class="meta">附件不在預覽裡</span></div><div id="f-pv" class="pv"></div></section>`:'';
+  const amt=`<section class="card">
+    <div class="sec-h"><h2>1. 申請金額</h2><span class="meta">兩期共用</span></div>
+    <div class="calc-io" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+      <div class="field"><label for="f-type">申請項目</label><select id="f-type" data-f="appType"><option value="fixed" ${d.appType!=='project'?'selected':''}>定額獎助</option><option value="project" ${d.appType==='project'?'selected':''}>專案認定</option></select></div>
+      <div class="field"><label for="f-mm">前一年度最高收托月份</label><input id="f-mm" type="number" min="1" max="12" data-f="maxMonth" value="${esc(d.maxMonth)}" placeholder="例：7"></div>
+      <div class="field"><label for="f-mk">最高收托人數</label><input id="f-mk" type="number" min="0" data-f="maxKids" value="${esc(d.maxKids)}" placeholder="例：60"></div>
+      <div class="field"><label for="f-rd">收托名冊日期（日）</label><input id="f-rd" type="number" min="1" max="31" data-f="rosterD" value="${esc(d.rosterD)}"></div>
+      <div class="field"><label for="f-fac">設施設備費（元）</label><input id="f-fac" type="number" data-f="fac" value="${d.fac===''||d.fac==null?'':esc(d.fac)}" placeholder="${money(n0(d.maxKids)*2000)}（人數×2,000）"></div>
+      <div class="field"><label for="f-op">營運費（元）</label><input id="f-op" type="number" data-f="op" value="${esc(d.op)}"></div>
+    </div>
+    <div class="out" id="f-out"></div>
+  </section>`;
+  const form=`<section class="card">
+    <div class="sec-h"><h2>2. ${FAC.stage===1?'第一期申請表與領據':'第二期核銷'}</h2>${missing.length?`<span class="meta"><a href="#opt">中心基本資料還有 ${missing.length} 欄沒填</a></span>`:''}</div>
+    <div class="calc-io" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+      <div class="field"><label for="f-fill">填表日期</label><input id="f-fill" type="date" data-fs="fillDate" value="${esc(st.fillDate||'')}"></div>
+      <div class="field"><label for="f-rdate">領據日期（空白＝同填表日期）</label><input id="f-rdate" type="date" data-fs="receiptDate" value="${esc(st.receiptDate||'')}"></div>
+      ${FAC.stage===2?`<div class="field"><label for="f-set">核銷金額（元）</label><input id="f-set" type="number" data-fs="settle" value="${esc(st.settle)}" placeholder="${money(c.total)}"></div>
+      <div class="field"><label for="f-ref">繳回金額（元）</label><input id="f-ref" type="number" data-fs="refund" value="${esc(st.refund)}" placeholder="0"></div>`:''}
+      <div class="field"><label for="f-ns">領據金額寫法</label><select id="f-ns" data-f="numStyle"><option value="cap" ${d.numStyle!=='num'?'selected':''}>國字大寫</option><option value="num" ${d.numStyle==='num'?'selected':''}>阿拉伯數字</option></select></div>
+    </div>
+    <div style="margin-top:14px;display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:13px;font-weight:900;color:var(--teal-t)">申請要件（勾了才會在申請表打 ■）</div>
+      ${FAC_REQ.map(([n,t])=>`<label class="tk" style="font-weight:500;font-size:14px"><input type="checkbox" id="f-req-${n}" data-freq="${n}" ${st.req[n]?'checked':''}><span class="tt">${t.replace(/<[^>]+>/g,'')}</span></label>`).join('')}
+      ${st.req[7]?`<div class="field" style="margin-left:34px;max-width:420px"><label for="f-other">(七)其他：檢附什麼</label><input id="f-other" data-fs="other" value="${esc(st.other||'')}"></div>`:''}
+    </div>
+  </section>`;
+  const bank=`<section class="card">
+    <div class="sec-h"><h2>3. 領據的中心帳戶</h2><span class="meta">填一次，之後共用</span></div>
+    <div class="calc-io" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+      ${[['bankAccName','戶名（空白＝機構全名）'],['bankName','金融機構名稱'],['bankBranch','分行別'],['bankAccount','帳號']].map(([k,l])=>`<div class="field"><label for="pb-${k}">${l}</label><input id="pb-${k}" data-pf2="${k}" value="${esc(p[k]||'')}"></div>`).join('')}
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px;margin-top:10px">存摺封面：${p.passbook?`<span class="chip ok">已上傳</span> ${esc(p.passbook.name)}`:'<span class="chip due">未上傳</span>'}
+      <label class="docbtn" style="cursor:pointer">${p.passbook?'換一張':'上傳照片'}<input type="file" accept="image/*" data-pb="" id="pb-center-f" hidden></label><span class="muted" style="font-size:12.5px">跟身障補助共用</span></div>
+  </section>`;
+  const att=`<section class="card">
+    <div class="sec-h"><h2>4. 附件</h2><span class="meta">${FAC.stage===1?'第一期':'第二期'}的檔案，照申請要件順序接在後面</span></div>
+    ${!db?`<div class="tip" style="margin-bottom:10px">目前沒有連上資料庫，附件只放在這次打開的頁面。</div>`:''}
+    <div style="display:flex;flex-direction:column;gap:10px">
+    ${FAC_SLOTS.filter(s=>!s.when||s.when(d)).map(s=>{ const fs=facSlotFiles(s.k); return `<div class="task ${fs.length?'done':''}" style="gap:4px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="chip ${fs.length?'ok':'due'}">${fs.length?`${fs.length} 個檔`:'未上傳'}</span><b style="flex:1;min-width:160px">${s.label}</b><span class="muted" style="font-size:12px">${s.g}</span>
+      <label class="docbtn" style="cursor:pointer">＋ 選檔案<input type="file" multiple accept="application/pdf,image/*" data-fslot="${s.k}" id="f-file-${s.k}" hidden></label></div>
+      ${fs.length?`<ul class="docs" style="padding-left:0">${fs.map((f,i)=>`<li style="display:flex;gap:8px;align-items:center;font-size:13.5px"><span style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(f.name)}${f.local?'（只在這台）':''}</span><button class="docbtn" data-act="f-rmfile" data-k="${s.k}" data-i="${f.local?i-((facStage().files[s.k]||[]).length):i}" data-local="${f.local?1:''}">移除</button></li>`).join('')}</ul>`:''}
+    </div>`;}).join('')}</div></section>`;
+  return head+pv+amt+form+bank+att;
+}
+function renderFacOut(){
+  const o=$('f-out'); if(!o||!FAC.d) return; const c=facCalc(FAC.d);
+  o.innerHTML=`<div><span class="k">設施設備費</span><span class="v">$${money(c.facAmt)}</span></div><div><span class="k">營運費</span><span class="v">$${money(c.op)}</span></div>
+    <div><span class="k"><b>申請總額度</b></span><span class="v">$${money(c.total)}</span></div>
+    <div class="${FAC.stage===1?'hl':''}"><span class="k"><b>第一期（70%）</b><small>3 月申請</small></span><span class="v">$${money(c.p1)}</span></div>
+    <div class="${FAC.stage===2?'hl':''}"><span class="k"><b>第二期（30%）</b><small>11 月核銷</small></span><span class="v">$${money(c.p2)}</span></div>`;
+}
+
+/* ── 表格頁面 ── */
+function pageFacApply(d,p,st){
+  const c=facCalc(d), ck=b=>b?'■':'□', [fy,fm,fd]=rocParts(st.fillDate);
+  const A=splitAddr(p.address), u=v=>`<u>&nbsp;${v||'&nbsp;&nbsp;&nbsp;'}&nbsp;</u>`;
+  const addr=A?`${u(A.city)}${A.ck}&nbsp;${u(A.dist)}${A.dk}&nbsp;${u(A.vil)}村里&nbsp;${u(A.road)}&nbsp;${u(A.sec)}段&nbsp;${u(A.lane)}巷&nbsp;${u(A.alley)}弄&nbsp;${u(A.no)}號&nbsp;${u(A.fl)}樓`:esc(p.address||'');
+  const unit=(p.unit||'').replace(/托嬰中心$/,'');
+  const g=[74,96,86,96,62,72,74,60,84];
+  const docs2=`1.最高收托<u>&nbsp;${esc(d.maxMonth)||'&nbsp;&nbsp;'}&nbsp;</u>月<u>&nbsp;${esc(d.maxKids)||'&nbsp;&nbsp;'}&nbsp;</u>人。<br>2.<u>&nbsp;${esc(d.maxMonth)||'&nbsp;&nbsp;'}&nbsp;</u>月<u>&nbsp;${esc(d.rosterD)||'&nbsp;&nbsp;'}&nbsp;</u>日收托名冊。`;
+  return `<div class="pg p" style="padding:40px 46px 0">
+    <div style="text-align:right;font-size:16px;margin:0 20px 6px">填表日期 中華民國 ${fy||'&nbsp;&nbsp;&nbsp;'}年 ${fm||'&nbsp;&nbsp;'} 月 ${fd||'&nbsp;&nbsp;'} 日</div>
+    <table class="ft" style="width:704px;font-size:14px"><colgroup>${g.map(w=>`<col style="width:${w}px">`).join('')}</colgroup>
+    <tr style="height:38px"><td colspan="9" class="c" style="font-size:20px;font-weight:700">提升準公共托嬰中心托育服務品質獎助申請表</td></tr>
+    <tr style="height:52px"><td class="c">申請單位</td><td colspan="5" class="c" style="font-size:16px">${esc(unit)}&nbsp;&nbsp;托嬰中心</td><td class="c">申請<br>項目</td><td colspan="2">${ck(d.appType!=='project')}定額獎助<br>${ck(d.appType==='project')}專案認定</td></tr>
+    <tr style="height:48px"><td class="c">負責人</td><td colspan="2" class="c" style="font-size:17px">${esc(p.owner||'')}</td><td class="c">身分證<br>統一編號</td><td colspan="2" class="c">${esc(p.ownerId||'')}</td><td class="c">連絡<br>電話</td><td colspan="2" class="c">${esc(p.phone||'')}</td></tr>
+    <tr style="height:62px"><td class="c">地&nbsp;&nbsp;&nbsp;&nbsp;址</td><td colspan="8" style="font-size:14px;line-height:2">${addr}</td></tr>
+    <tr style="height:34px"><td colspan="3" class="c">申請要件</td><td colspan="4" class="c">檢附相關證明文件</td><td colspan="2" class="c">主管機關審核結果</td></tr>
+    ${FAC_REQ.map(([n,t,docs])=>`<tr style="height:${n===3?108:n===7?40:50}px"><td colspan="3" style="${n===3?'font-size:13px':''}">${ck(st.req[n])}${n===3?t.replace(/(3萬[\d,]+元)/g,'<span style="color:#c00">$1</span>'):t}</td><td colspan="4" style="font-size:13px;line-height:1.55">${n===2?docs2:n===7?esc(st.other||''):docs}</td><td colspan="2">${n===7?'':`□符合<br>□不符合(請說明)`}</td></tr>`).join('')}
+    <tr style="height:34px"><td rowspan="2" class="c">申請獎助<br>項目</td><td colspan="3">設施設備費：${c.facAmt?money(c.facAmt):''}&nbsp;元</td><td rowspan="3" class="c" style="font-size:12.5px">核定額度<br><span style="color:#777">(主管機關<br>填寫)</span></td><td class="c">第一期</td><td colspan="3" class="r">元</td></tr>
+    <tr style="height:34px"><td colspan="3">營運費：${c.op?money(c.op):''}&nbsp;元</td><td class="c">第二期</td><td colspan="3" class="r">元</td></tr>
+    <tr style="height:34px"><td class="c">申請總額度</td><td colspan="3" class="c">${c.total?money(c.total):''}&nbsp;元</td><td class="c">總金額</td><td colspan="3" class="r">元</td></tr>
+    <tr style="height:130px"><td colspan="2" class="c" style="vertical-align:top">經辦</td><td colspan="2" class="c" style="vertical-align:top;position:relative">會計<div class="sm" style="position:absolute;left:0;right:0;bottom:8px">(會計與負責人不可同一人)</div></td><td colspan="3" class="c" style="vertical-align:top;position:relative">負責人<div class="sm" style="position:absolute;left:0;right:0;bottom:8px">（申請單位用印、負責人簽章）</div></td><td colspan="2" class="c" style="vertical-align:top">主管機關</td></tr>
+    </table></div>`;
+}
+function pageFacReceipt(d,p,st,pb){
+  const amt=facThis(d), s=moneyParts(amt,d.numStyle!=='num'), U=['拾','萬','仟','佰','拾','元'], [ry,rm,rd]=rocParts(st.receiptDate||st.fillDate);
+  const line=U.map((x,i)=>`<u>&nbsp;${amt?s[i]:'&nbsp;&nbsp;'}&nbsp;</u>${x}`).join(' ');
+  const g=[82,74,150,80,120];
+  return `<div class="pg p" style="padding:56px 70px 0">
+    <table class="ft" style="width:654px;font-size:17px;border:2px solid #000"><colgroup>${g.map(w=>`<col style="width:${w*654/506}px">`).join('')}</colgroup>
+    <tr style="height:44px"><td colspan="5" class="c" style="font-size:22px;font-weight:700">提升準公共托嬰中心托育服務品質獎助金「領據」</td></tr>
+    <tr style="height:40px"><td colspan="5" class="c" style="font-size:19px"><u>${esc(p.unit||'')}</u></td></tr>
+    <tr style="height:150px"><td colspan="5" style="font-size:19px;line-height:2.1;padding:8px 10px">玆收到${FY(st)}年 <span style="font-size:14px">臺南市政府社會局</span>提升準公共托嬰中心托育服務品質獎助金(第${FAC.stage===1?'一':'二'}期)，計新臺幣 ${line}整，確實無訛。</td></tr>
+    <tr style="height:56px"><td rowspan="3" class="c">托嬰中心<br>帳戶資料</td><td class="c">戶名</td><td>${esc(p.bankAccName||p.unit||'')}</td><td class="c">統一編號</td><td class="c">${esc(p.taxId||'')}</td></tr>
+    <tr style="height:40px"><td class="c">帳號</td><td colspan="3">${esc(p.bankAccount||'')}</td></tr>
+    <tr style="height:52px"><td class="c">金融機構<br>名稱</td><td class="c" style="font-size:20px">${esc(p.bankName||'')}</td><td class="c">分行別</td><td class="c">${esc(p.bankBranch||'')}</td></tr>
+    <tr style="height:250px"><td colspan="5" class="c" style="position:relative">${pb?`<img src="${pb}" style="max-height:240px;max-width:600px;object-fit:contain">`:'請黏貼存摺封面影本'}</td></tr>
+    <tr style="height:60px"><td class="c">經辦<br>簽章</td><td colspan="2"></td><td colspan="2" rowspan="3" class="c" style="vertical-align:top;padding-top:8px">托嬰中心圖記</td></tr>
+    <tr style="height:60px"><td class="c">會計<br>簽章</td><td colspan="2" style="vertical-align:bottom;font-size:12px;color:#777">(會計與負責人不可同一人)</td></tr>
+    <tr style="height:60px"><td class="c">負責人<br>簽章</td><td colspan="2"></td></tr>
+    <tr style="height:44px"><td colspan="5" class="c">中華民國 ${ry||'&nbsp;&nbsp;&nbsp;'}年 ${rm||'&nbsp;&nbsp;'} 月 ${rd||'&nbsp;&nbsp;'} 日</td></tr>
+    </table></div>`;
+}
+const FY=st=>{ const r=rocParts(st.fillDate)[0]; return r||FAC.y; };
+function pageFacSplit(d,p,st){
+  const c=facCalc(d), s2=d.s2, settle=FAC.stage===2;
+  const set=settle?(s2.settle!==''&&s2.settle!=null?n0(s2.settle):c.total):0, ref=settle?n0(s2.refund):0;
+  const v=x=>x?money(x).replace(/,/g,''):'';
+  return `<div class="pg p" style="padding:56px 76px 0">
+    <table class="ft" style="width:642px;font-size:18px"><colgroup><col style="width:150px"><col style="width:210px"><col style="width:282px"></colgroup>
+    <tr style="height:76px"><td colspan="3" class="c" style="font-size:20px;font-weight:700">提升準公共托嬰中心托育服務品質獎助分期申請(核銷)表</td></tr>
+    <tr style="height:76px"><td class="c">類別</td><td class="c">項目</td><td class="c">金額 <span style="font-size:12px">新臺幣(元)</span></td></tr>
+    <tr style="height:48px"><td rowspan="3" class="c">核定</td><td class="c">設施設備費</td><td class="c">${v(c.facAmt)}</td></tr>
+    <tr style="height:48px"><td class="c">營運費</td><td class="c">${v(c.op)}</td></tr>
+    <tr style="height:48px"><td class="c">總金額</td><td class="c">${v(c.total)}</td></tr>
+    <tr style="height:48px"><td rowspan="2" class="c">分期申請</td><td class="c">第1期申請金額70%</td><td class="c">${v(c.p1)}</td></tr>
+    <tr style="height:48px"><td class="c">第2次申請金額30%</td><td class="c">${v(c.p2)}</td></tr>
+    <tr style="height:48px"><td rowspan="2" class="c">核銷<br><span style="color:#777">(核銷時填寫)</span></td><td class="c">核銷金額</td><td class="c">${settle?v(set):''}</td></tr>
+    <tr style="height:48px"><td class="c">繳回金額</td><td class="c">${settle?(ref?v(ref):'0'):''}</td></tr>
+    <tr style="height:56px"><td colspan="2" class="c">本次申請獎助金額</td><td class="c">${v(facThis(d))}</td></tr>
+    <tr style="height:56px"><td colspan="2" class="c">合計申請金額<span style="color:#777">(核銷時填寫)</span></td><td class="c">${settle?v(c.p1+c.p2-ref):''}</td></tr>
+    </table>
+    <div style="font-size:14px;margin-top:12px">備註：採定額補助方案，核銷時設施設備費及營運費得相互勻支。</div>
+    <div style="font-size:15px;margin-top:40px;display:flex;justify-content:space-between;padding-right:40px"><span>負責人：</span><span>主管人員：</span><span>會計：</span></div>
+  </div>`;
+}
+async function facPages(){ const d=FAC.d, p=OPT.profile, st=facStage(); const pb=await imgUrl(p.passbook); return [pageFacApply(d,p,st), pageFacReceipt(d,p,st,pb), pageFacSplit(d,p,st)]; }
+async function renderFacPreview(){ const el=$('f-pv'); if(!el) return; const pg=await facPages(); el.innerHTML=pg.map(h=>`<div class="pvbox"><div class="pvin">${h}</div></div>`).join(''); }
+async function facPdf(){
+  if(!FAC.d) return; const warn=[];
+  try{
+    FAC.busy='準備中…'; render(); await libs();
+    const {PDFDocument}=window.PDFLib, out=await PDFDocument.create(), stage=$('pdfstage'), pg=await facPages();
+    let done=0;
+    for(const html of pg){
+      stage.innerHTML=html; const el=stage.firstElementChild;
+      await Promise.all([...el.querySelectorAll('img')].map(im=>im.complete?0:new Promise(r=>{im.onload=im.onerror=r;})));
+      try{ if(!kaiOk()) await document.fonts.load('20px "LXGW WenKai TC"', el.textContent); await document.fonts.ready; }catch(e){}
+      const c=await window.html2canvas(el,{scale:2,backgroundColor:'#ffffff',logging:false});
+      const img=await out.embedJpg(dataUrlBytes(c.toDataURL('image/jpeg',.92))); out.addPage([595.28,841.89]).drawImage(img,{x:0,y:0,width:595.28,height:841.89});
+      const b=document.querySelector('[data-act="f-pdf"]'); if(b) b.textContent=`產生中 ${++done}/${pg.length}…`;
+    }
+    for(const s of FAC_SLOTS) if(!s.when||s.when(FAC.d)) for(const f of facSlotFiles(s.k)){
+      try{ const bytes=await fileBytes(f), t=f.type||'';
+        if(t.includes('pdf')){ const src=await PDFDocument.load(bytes,{ignoreEncryption:true}); (await out.copyPages(src,src.getPageIndices())).forEach(pp=>out.addPage(pp)); }
+        else { const im=t.includes('png')?await out.embedPng(bytes):(t.includes('jpeg')||t.includes('jpg'))?await out.embedJpg(bytes):await out.embedJpg(await toJpeg(bytes,t));
+          const land=im.width>im.height, [W,H]=land?[841.89,595.28]:[595.28,841.89], m=24, sc=Math.min((W-2*m)/im.width,(H-2*m)/im.height);
+          out.addPage([W,H]).drawImage(im,{x:(W-im.width*sc)/2,y:(H-im.height*sc)/2,width:im.width*sc,height:im.height*sc}); }
+      }catch(e){ warn.push(`${s.label}「${f.name}」`); }
+    }
+    stage.innerHTML=''; const bytes=await out.save(); FAC.busy='下載中…'; render();
+    if(OPT.downloads===undefined){ try{ OPT.downloads=await claude.use('downloads'); }catch(e){ OPT.downloads=null; } }
+    const name=`${CENTERS[S.center].name}_設施設備及營運補助_${FAC.y}年_第${FAC.stage===1?'一期申請':'二期核銷'}.pdf`;
+    if(!OPT.downloads) toast('這個畫面不能下載檔案，請在電腦瀏覽器開啟');
+    else { try{ await OPT.downloads.save({filename:name,data:bytes}); toast(warn.length?`已下載，但這些檔案讀不到：${warn.join('、')}`:`已下載 ${name}（${out.getPageCount()} 頁）`); }catch(e){ if(e&&e.code!=='declined') toast('下載失敗，請再按一次'); } }
+  }catch(e){ console.error(e); toast('PDF 產生失敗，請確認網路後再試一次'); }
+  finally{ FAC.busy=''; render(); }
+}
+
+/* ── 互動 ── */
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act^="f-"]'); if(!el) return; const a=el.dataset.act;
+  if(a==='f-pdf') facPdf();
+  else if(a==='f-preview'){ FAC.preview=!FAC.preview; render(); }
+  else if(a==='f-stage'){ FAC.stage=+el.dataset.v; render(); }
+  else if(a==='f-rmfile'){ const k=el.dataset.k,i=+el.dataset.i;
+    if(el.dataset.local){ FAC.local[FAC.stage+':'+k].splice(i,1); render(); return; }
+    const st=facStage(), f=st.files[k][i]; st.files[k].splice(i,1); saveFac(); render(); getAssets().then(a=>{ if(a&&f&&f.id) a.delete(f.id).catch(()=>{}); }); }
+});
+document.addEventListener('change',e=>{
+  const el=e.target; if(S.tab!=='fac'||!$('main').contains(el)) return;
+  if(el.id==='f-y'){ FAC.y=+el.value; facSubscribe(); render(); return; }
+  if(el.dataset.fslot&&el.files.length){ facUpload(el.dataset.fslot,[...el.files]); el.value=''; return; }
+  if(el.dataset.pb!==undefined&&el.files&&el.files[0]){ passbookUpload(el.dataset.pb,el.files[0]); el.value=''; return; }
+  const d=FAC.d; if(!d) return;
+  if(el.dataset.freq){ facStage().req[el.dataset.freq]=el.checked; saveFac(); setTimeout(softRender,0); }
+  else if(el.dataset.f==='appType'||el.dataset.f==='numStyle'){ d[el.dataset.f]=el.value; saveFac(); setTimeout(softRender,0); }
+  if(FAC.preview) renderFacPreview();
+});
+document.addEventListener('input',e=>{
+  const el=e.target; if(S.tab!=='fac'||!FAC.d) return; const d=FAC.d;
+  if(el.dataset.f&&!['appType','numStyle'].includes(el.dataset.f)){ d[el.dataset.f]=el.value===''?'':(el.dataset.f==='rosterD'||el.dataset.f==='maxMonth'?el.value:n0(el.value)); saveFac(); renderFacOut();
+    if(el.dataset.f==='maxKids'){ const f=$('f-fac'); if(f) f.placeholder=`${money(n0(d.maxKids)*2000)}（人數×2,000）`; } }
+  else if(el.dataset.fs){ facStage()[el.dataset.fs]=el.value; saveFac(); }
+  else if(el.dataset.pf2){ OPT.profile[el.dataset.pf2]=el.value; saveProfile(); }
+  else return;
+  if(FAC.preview){ clearTimeout(FAC._pv); FAC._pv=setTimeout(renderFacPreview,500); }
+});
+
 /* ───────── 互動 ───────── */
 document.addEventListener('click',e=>{
   const cb=e.target.closest('[data-center]');
@@ -1889,6 +2155,7 @@ document.addEventListener('click',e=>{
   else if(a==='newtype'){ S.newType = S.newType===el.dataset.type?null:el.dataset.type; render(); const n=$('nc-name'); if(n) n.focus(); }
   else if(a==='togglecase'){ S.caseOpen = S.caseOpen===el.dataset.id?null:el.dataset.id; S.confirmDel=null; render(); }
   else if(a==='opencase'){ S.caseOpen=el.dataset.id; }
+  else if(a==='gofac'){ FAC.y=+el.dataset.y; FAC.stage=+el.dataset.s; facSubscribe(); }
   else if(a==='godis'){ DIS.y=+el.dataset.y; DIS.q=+el.dataset.q; disSubscribe(); DIS.prevKids=undefined; }
   else if(a==='goopt'){ OPT.y=+el.dataset.y; OPT.q=+el.dataset.q; optSubscribe(); }
   else if(a==='delask'){ S.confirmDel=el.dataset.id; render(); }
@@ -1937,7 +2204,7 @@ document.addEventListener('submit',e=>{
 
 function route(){
   const h=(location.hash||'').slice(1);
-  S.tab=['home','calendar','cases','calc','opt','dis','visit'].includes(h)?h:'home';
+  S.tab=['home','calendar','cases','calc','opt','dis','visit','fac'].includes(h)?h:'home';
   render(); window.scrollTo(0,0);
 }
 addEventListener('hashchange',route);
