@@ -1793,6 +1793,99 @@ function printConfirmSlips(ym2, rocY2, mo2) {
 
 
 
+// ════ 優化補助匯出（給托育補助小幫手用）════
+// 依薪資單同樣的算法，把一季三個月每位老師的薪資數字存成 JSON 檔
+function subsidyFigures(emp,ym){
+  var a=JSON.parse(localStorage.getItem('xb4adj_'+emp.id+'_'+ym)||'{}');
+  function gv(k,def){
+    if(a[k]!==undefined){
+      var isSal=(k==='base'||k==='sup'||k==='admin'||k==='welfare'||k==='insured');
+      if(isSal && a[k]===0 && (emp[k]||0)>0) return emp[k]||def||0;
+      return a[k];
+    }
+    return emp[k]!==undefined?emp[k]:(def||0);
+  }
+  var base=gv('base',30000),sup=gv('sup',0),adm=gv('admin',0),wel=gv('welfare',0);
+  var sem=gv('semester',0),bon=gv('bonus',0),yend=gv('yearend',0);
+  var rawIns=gv('insured',0);
+  var ins=rawIns>0?toGrade(rawIns,LI_GRADES):suggestGrade(base+sup+adm);
+  var dep=emp.dep_count||0;
+  var base_total=base+sup+adm+wel, daily=base_total/30, hourly=base_total/30/8;
+  var ot1_pay=Math.ceil((base/30/8)*1.34*(gv('ot1_min',0)/60));
+  var ot2_pay=Math.ceil((base/30/8)*1.67*(gv('ot2_min',0)/60));
+  var ot_tot=ot1_pay+ot2_pay;
+  var att=getMonthAtt(emp.name,ym);
+  var sick_d=a.sick_d!==undefined?a.sick_d:(att.sick_d||0);
+  var sick_h=a.sick_h!==undefined?a.sick_h:(att.sick_h||0);
+  var pers_d=a.pers_d!==undefined?a.pers_d:(att.pers_d||0);
+  var pers_h=a.pers_h!==undefined?a.pers_h:(att.pers_h||0);
+  var sick_cut=Math.round(daily*0.5*sick_d+hourly*0.5*sick_h);
+  var pers_cut=Math.round(daily*pers_d+hourly*pers_h);
+  var late_cut=Math.round(hourly*((att.late_min||0)/60));
+  var li_ee=Math.round(ins*LI_RATE*LI_EE_RATIO);
+  var hi_self=Math.round(ins*HI_RATE*HI_EE_RATIO);
+  var hi_dep=dep>0?Math.round(ins*HI_RATE*HI_EE_RATIO*dep):0;
+  var notes=[];
+  if(ot_tot) notes.push('加班'+ot_tot);
+  if(sem) notes.push('學期獎金'+sem);
+  if(bon) notes.push('獎金'+bon);
+  if(yend) notes.push('年終'+yend);
+  return {name:emp.name, hire:emp.hire||'', insured:ins,
+    fixed:base_total, other:ot_tot+sem+bon+yend, yearend:yend,
+    labor:li_ee, health:hi_self+hi_dep, absent:sick_cut+pers_cut+late_cut, otherDeduct:0,
+    note:notes.join('、')};
+}
+function subsidyExport(rocY,q){
+  var y=rocY+1911, months=[q*3-2,q*3-1,q*3];
+  function run(){
+    var out={source:'小布迪出勤薪資系統',kind:'optimize-subsidy-salary',version:1,
+      rocYear:rocY,quarter:q,exportedAt:new Date().toISOString(),months:[]};
+    months.forEach(function(m){
+      var ym=y+''+pad(m), rows=[];
+      emps.forEach(function(emp){
+        if(emp.hire && emp.hire.slice(0,7).replace('-','')>ym) return; // 還沒到職
+        rows.push(subsidyFigures(emp,ym));
+      });
+      out.months.push({month:m,rows:rows});
+    });
+    var blob=new Blob([JSON.stringify(out,null,1)],{type:'application/json'});
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='優化補助薪資_'+rocY+'年第'+q+'季.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){URL.revokeObjectURL(a.href);},2000);
+    var p=document.getElementById('subsidy-exp'); if(p) p.remove();
+  }
+  // 先從 Firebase 拿最新的出勤與確認單，再算
+  if(window._fb&&window._fb.ready){
+    Promise.all([fbGet('att'),fbGet('adj')]).then(function(r){
+      var data=r[0], adj=r[1];
+      if(data) Object.keys(data).forEach(function(nk){var dates=data[nk]; if(!dates||typeof dates!=='object')return;
+        var name=nk.replace(/_/g,' ');
+        Object.keys(dates).forEach(function(ds){var logs=dates[ds]; if(!logs)return;
+          localStorage.setItem(dayKey(name,ds),JSON.stringify(Array.isArray(logs)?logs:Object.keys(logs).map(function(k){return logs[k];})));});});
+      if(adj) Object.keys(adj).forEach(function(k){ if(k.indexOf('xb4adj_')===0 && !localStorage.getItem(k)) localStorage.setItem(k,JSON.stringify(adj[k])); });
+      run();
+    }).catch(run);
+  } else run();
+}
+function openSubsidyExport(){
+  var old=document.getElementById('subsidy-exp'); if(old){old.remove();return;}
+  var n=new Date(), rocY=n.getFullYear()-1911, cq=Math.floor(n.getMonth()/3)+1;
+  var lq=cq-1, ly=rocY; if(lq<1){lq=4;ly--;}
+  var opts='';
+  for(var yy=rocY;yy>=rocY-1;yy--) for(var qq=4;qq>=1;qq--){
+    if(yy===rocY && qq>cq) continue;
+    opts+='<option value="'+yy+'-'+qq+'"'+(yy===ly&&qq===lq?' selected':'')+'>'+yy+' 年第 '+qq+' 季（'+(qq*3-2)+'–'+(qq*3)+' 月）</option>';
+  }
+  var d=document.createElement('div'); d.id='subsidy-exp';
+  d.style.cssText='background:#fff;border:1.5px solid var(--teal);border-radius:12px;padding:12px 14px;margin-bottom:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:.8rem;';
+  d.innerHTML='<b style="color:var(--navy);">優化補助薪資匯出</b>'
+    +'<select id="subsidy-q" style="padding:6px 8px;border:1.5px solid var(--border2);border-radius:8px;font-family:var(--sans);">'+opts+'</select>'
+    +'<button style="padding:7px 14px;border:none;border-radius:8px;background:var(--teal);color:#fff;font-weight:700;cursor:pointer;" onclick="var v=document.getElementById(\'subsidy-q\').value.split(\'-\');subsidyExport(+v[0],+v[1]);">下載檔案</button>'
+    +'<span style="color:var(--gray);">下載後到「托育補助小幫手 → 優化補助」匯入，薪資清冊就會自動填好</span>';
+  var sub=document.getElementById('pay-sub'); if(sub) sub.parentNode.insertBefore(d,sub);
+}
 function renderPay(body){
   var ym=ymNow();
   var n=new Date(),rocY=n.getFullYear()-1911,mo=parseInt(ym.slice(4));
@@ -1804,6 +1897,7 @@ function renderPay(body){
     +'<button id="pay-tab-confirm" style="'+ST_OFF+'" onclick="showPayTab(\'confirm\')">📋 確認單</button>'
     +'<button onclick="manualSyncConfirm()" style="padding:7px 14px;border:1.5px solid #4a9c6f;border-radius:8px;font-size:.75rem;font-weight:600;cursor:pointer;background:#f0faf4;color:#1a6040;">☁️ 同步</button>'
     +'<button class="print-btn" onclick="payPrint(\'' + ym + '\''+',' + rocY + ',' + mo + ')" style="margin-left:8px;">🖨 列印</button>'
+    +'<button onclick="openSubsidyExport()" style="padding:7px 14px;border:1.5px solid var(--teal);border-radius:8px;font-size:.75rem;font-weight:600;cursor:pointer;background:var(--teal-lt);color:var(--teal);">📤 優化補助匯出</button>'
     +'</div>'
     +'<div id="pay-sub"></div>';
   showPayTab('slip',ym,rocY,mo);
