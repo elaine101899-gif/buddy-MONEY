@@ -263,6 +263,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 .pg .ft tr.gy td{background:#BFBFBF}
 .pg .sm{font-size:10.7px;color:#7f7f7f}
 .pg .stamp{position:absolute;border:1.3px dashed #5b7fb5;display:flex;justify-content:center;align-items:flex-start;text-align:center;font-size:13px;color:#333;padding-top:8px;line-height:1.4}
+.ver{position:fixed;left:calc(10px + env(safe-area-inset-left,0px));bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:8;font-family:var(--f-num);font-size:11.5px;font-weight:600;color:var(--muted);background:var(--ground);border:1.5px solid var(--track);border-radius:999px;padding:1px 9px;pointer-events:none;font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 
@@ -291,6 +292,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
+<div class="ver" id="ver">版本 115/11/24 15:33</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
