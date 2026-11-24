@@ -261,6 +261,8 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 .pg .ft td.c{text-align:center}.pg .ft td.r{text-align:right}
 .pg .ft td.bl{background:#DDEBF7}.pg .ft td.yl{background:#FFF2CC}
 .pg .ft tr.gy td{background:#BFBFBF}
+.pg .ft td.thk{border-left:2.5px solid #000;border-right:2.5px solid #000}
+.pg .ft.dis td{padding:2px 3px;line-height:1.25}
 .pg .sm{font-size:10.7px;color:#7f7f7f}
 .pg .stamp{position:absolute;border:1.3px dashed #5b7fb5;display:flex;justify-content:center;align-items:flex-start;text-align:center;font-size:13px;color:#333;padding-top:8px;line-height:1.4}
 .ver{position:fixed;left:calc(10px + env(safe-area-inset-left,0px));bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:8;font-family:var(--f-num);font-size:11.5px;font-weight:600;color:var(--muted);background:var(--ground);border:1.5px solid var(--track);border-radius:999px;padding:1px 9px;pointer-events:none;font-variant-numeric:tabular-nums}
@@ -285,6 +287,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
       <a href="#calendar" data-tab="calendar">年度行事曆</a>
       <a href="#cases" data-tab="cases">入托・退托・入職</a>
       <a href="#opt" data-tab="opt">優化補助申請</a>
+      <a href="#dis" data-tab="dis">身障補助申請</a>
       <a href="#calc" data-tab="calc">補助試算</a>
     </nav>
   </div>
@@ -292,7 +295,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 15:33</div>
+<div class="ver" id="ver">版本 115/11/24 15:43</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -312,7 +315,7 @@ const SETTLE_DOCS = ['核銷表申請表','領據（第二期）','薪資清冊�
 const Q = {1:'上年 10–12 月',4:'1–3 月',7:'4–6 月',10:'7–9 月'};
 const TASKS = [];
 [1,4,7,10].forEach(m=>{
-  TASKS.push({id:'dis-'+m,m,title:`身心障礙補助（${Q[m]}）`,note:'每季一次，季後一個月月底前繳；每位幼兒每月 1,500 元',calc:'dis',cat:'季'});
+  TASKS.push({id:'dis-'+m,m,title:`身心障礙補助（${Q[m]}）`,note:'每季一次，季後一個月月底前繳；依障別每月 1,500–8,000 元',cat:'季'});
   TASKS.push({id:'opt-'+m,m,title:`優化補助（${Q[m]}）`,note:'每季一次，季後一個月月底前繳',cat:'季'});
 });
 TASKS.push(
@@ -415,7 +418,7 @@ function saveLocal(){ lsSet(localKey(), JSON.stringify({checks:S.checks,cases:S.
 function subscribe(){
   unsubs.forEach(u=>{try{u()}catch(e){}}); unsubs=[];
   S.checks={}; S.yearExists={}; S.cases=[]; S.settings={...DEFAULT_SETTINGS};
-  if(!db){ loadLocal(); setMode('local'); optSubscribe(); profSubscribe(); render(); return; }
+  if(!db){ loadLocal(); setMode('local'); optSubscribe(); profSubscribe(); disSubscribe(); DIS.prevKids=undefined; render(); return; }
   setMode('loading'); render();
   clearTimeout(loadTimer);
   loadTimer=setTimeout(()=>{ if(S.mode==='loading') setMode('slow'); },10000);
@@ -432,7 +435,7 @@ function subscribe(){
     if(S.center!==c) return;
     S.cases=s.docs.map(d=>({id:d.id,...d.data()})); done(s); softRender();
   },err));
-  optSubscribe(); profSubscribe();
+  optSubscribe(); profSubscribe(); disSubscribe(); DIS.prevKids=undefined;
   unsubs.push(db.doc(`${base()}/settings/main`).onSnapshot(s=>{
     if(S.center!==c) return;
     S.settings={...DEFAULT_SETTINGS,...(s.data()||{})}; S.settings.dis=(S.settings.dis||[]).filter(Boolean); done(s);
@@ -505,7 +508,8 @@ function taskHTML(t,y,showWhen){
   if(t.calc==='p1') calc = g.kids ? `<div class="calcline">第一期申請金額：<span class="num">$${money(g.p1)}</span>（<a href="#calc">試算</a>）</div>` : `<div class="calcline"><a href="#calc">先到補助試算填收托人數</a></div>`;
   if(t.calc==='p2') calc = g.kids ? `<div class="calcline">第二期申請金額：<span class="num">$${money(g.p2)}</span>（<a href="#calc">試算</a>）</div>` : `<div class="calcline"><a href="#calc">先到補助試算填收托人數</a></div>`;
   if(t.id.startsWith('opt-')){ const q=t.m===1?4:(t.m-1)/3, yy=t.m===1?y-1:y; calc=`<div class="calcline"><a href="#opt" data-act="goopt" data-y="${yy}" data-q="${q}">填寫申請表、產生 PDF →</a></div>`; }
-  if(t.calc==='dis') calc = disTotal() ? `<div class="calcline">目前試算：<span class="num">$${money(disTotal())}</span>（<a href="#calc">試算</a>）</div>` : '';
+  if(t.id.startsWith('dis-')){ const q=t.m===1?4:(t.m-1)/3, yy=t.m===1?y-1:y; calc=`<div class="calcline"><a href="#dis" data-act="godis" data-y="${yy}" data-q="${q}">填寫名冊、產生 PDF →</a></div>`; }
+  if(false) calc = disTotal() ? `<div class="calcline">目前試算：<span class="num">$${money(disTotal())}</span>（<a href="#calc">試算</a>）</div>` : '';
   return `<div class="task ${done?'done':''}">
     <label class="tk"><input type="checkbox" id="tk-${y}-${t.id}" data-act="tick" data-y="${y}" data-k="${t.id}" ${done?'checked':''}><span class="tt">${t.title}</span></label>
     ${(chip||when)?`<div class="tmeta">${when}${chip}</div>`:''}
@@ -666,15 +670,9 @@ function viewCalc(){
   </section>
   <section class="card">
     <div class="eyebrow">每季申報</div>
-    <div class="sec-h"><h2>身心障礙補助</h2><span class="meta">每人每月 1,500 元</span></div>
-    <div class="field" style="max-width:220px"><label for="d-q">申報季別</label>
-      <select id="d-q">${[[1,'1–3 月（4 月底繳）'],[2,'4–6 月（7 月底繳）'],[3,'7–9 月（10 月底繳）'],[4,'10–12 月（隔年 1 月繳）']].map(([v,l])=>`<option value="${v}" ${Number(st.disQ)===v?'selected':''}>${l}</option>`).join('')}</select></div>
-    <div class="kids">
-      ${dis.length?dis.map((k,i)=>`<div class="kid"><input id="d-n-${i}" data-dis="n" data-i="${i}" value="${esc(k.n)}" placeholder="幼兒姓名" aria-label="幼兒姓名"><select id="d-m-${i}" data-dis="m" data-i="${i}" aria-label="本季月數">${[3,2,1,0].map(v=>`<option value="${v}" ${Number(k.m)===v?'selected':''}>${v} 個月</option>`).join('')}</select><button class="x" data-act="disdel" data-i="${i}" aria-label="移除這位幼兒">×</button></div>`).join('')
-        :`<div class="empty">${CH.lulu}<span>還沒有幼兒。按下面「新增幼兒」開始。</span></div>`}
-      <div><button class="btn sm ghost" data-act="disadd">＋ 新增幼兒</button></div>
-    </div>
-    <div class="out" id="d-out"></div>
+    <div class="sec-h"><h2>身心障礙補助</h2></div>
+    <p style="margin:0 0 12px">金額依障別計算：托育服務費每月 1,500–8,000 元、托育人員照顧費每月 1,500–5,000 元。名冊、月數和金額都在「身障補助申請」自動算好。</p>
+    <a class="btn" href="#dis" style="text-decoration:none;display:inline-block">前往身障補助申請</a>
   </section>
   </div>`;
 }
@@ -700,9 +698,10 @@ function render(){
   $('headMascot').innerHTML=CH[cn.mascot];
   Object.keys(CENTERS).forEach(k=>$('c-'+k).setAttribute('aria-pressed',String(k===S.center)));
   document.querySelectorAll('nav a').forEach(a=>a.setAttribute('aria-current',a.dataset.tab===S.tab?'page':'false'));
-  const v={home:viewHome,calendar:viewCalendar,cases:viewCases,calc:viewCalc,opt:viewOpt}[S.tab]||viewHome;
+  const v={home:viewHome,calendar:viewCalendar,cases:viewCases,calc:viewCalc,opt:viewOpt,dis:viewDis}[S.tab]||viewHome;
   $('main').innerHTML=v();
   if(S.tab==='calc') renderCalcOut();
+  if(S.tab==='dis'){ if(DIS.preview) renderDisPreview(); if(DIS.prevKids===undefined){ DIS.prevKids=null; disLoadPrev(); } if(db&&OPT.assets===undefined) getAssets(); }
   if(S.tab==='opt'){ if(OPT.preview) renderPreview(); if(db&&OPT.assets===undefined) getAssets().then(()=>{ if(S.tab==='opt') softRender(); }); }
 }
 
@@ -1205,7 +1204,7 @@ document.addEventListener('change',e=>{
   if(el.dataset.slot&&el.files.length){ optUpload(el.dataset.slot,[...el.files]); el.value=''; return; }
   const d=OPT.d; if(!d) return;
   if(el.id==='r-pick'&&el.value){ const r=d.months.flatMap(m=>m.rows).find(x=>x.name===el.value); if(r){ d.ros.people.push({title:r.title||'托育人員',name:r.name,idno:r.idno||'',hire:r.hire||'',ins:r.ins||0,insDate:r.hire||'',note:''}); saveOpt(); render(); } return; }
-  if(el.dataset.rp==='hire'||el.dataset.rp==='insDate'){ render(); }
+  if(el.dataset.rp==='hire'||el.dataset.rp==='insDate'){ setTimeout(softRender,0); }
   if(el.dataset.req){ d.req[el.dataset.req]=el.checked; saveOpt(); render(); }
   else if(el.dataset.sign!==undefined){ d.sign[el.dataset.sign]=el.checked; saveOpt(); render(); }
   else if(el.dataset.row==='skip'){ const r=d.months[+el.dataset.mi].rows[+el.dataset.ri]; r.skip=!el.checked; staffDir()[r.name]={...(staffDir()[r.name]||{}),skip:r.skip}; saveProfile(); saveOpt(); render(); }
@@ -1236,6 +1235,380 @@ document.addEventListener('input',e=>{
   if(OPT.preview){ clearTimeout(OPT._pv); OPT._pv=setTimeout(renderPreview,500); }
 });
 
+/* ═════════ 身障補助：填寫＋產生 PDF ═════════ */
+const DLEV=[null,
+  {n:'身心障礙重度',fee:8000,care:5000},{n:'身心障礙中度',fee:5000,care:2500},{n:'身心障礙輕度',fee:1500,care:1500},
+  {n:'發展遲緩',fee:1500,care:1500},{n:'疑似發展遲緩',fee:1500,care:1500}];
+const DDOC=[null,'身心障礙證明','綜合評估報告書','診斷證明書'];
+const DIS_SLOTS=[
+  {k:'contract',label:'托育契約'},
+  {k:'cert',label:'身障證明／綜合報告書／診斷證明（有效期間內）'},
+  {k:'report',label:'通報兒童早期發展服務管理中心佐證（有通報者）'},
+  {k:'training',label:'研習證明'},
+  {k:'other',label:'其他附件'}
+];
+const DIS={ y:lastQ()[0], q:lastQ()[1], d:null, unsub:null, local:{}, busy:'', preview:false, imgs:{} };
+const disPath=()=>`${base()}/dis/${DIS.y}-q${DIS.q}`;
+const disLocalKey=()=>`local:${S.center}:dis:${DIS.y}-q${DIS.q}`;
+function disDefault(){ return {fillDate:isoToday(), receiptDate:'', cap:'', act:'', qLabel:'', numStyle:'cap', annual:false, kids:[], files:{}}; }
+function disNorm(d){ d=Object.assign(disDefault(),d||{}); d.kids=(d.kids||[]).filter(Boolean); d.files=d.files||{}; return d; }
+function disSubscribe(){
+  if(DIS.unsub){ try{DIS.unsub()}catch(e){} DIS.unsub=null; }
+  DIS.d=null; DIS.local={};
+  if(!db){ try{ DIS.d=disNorm(JSON.parse(lsGet(disLocalKey())||'null')); }catch(e){ DIS.d=disDefault(); } softRender(); return; }
+  const y=DIS.y,q=DIS.q,c=S.center;
+  DIS.unsub=db.doc(disPath()).onSnapshot(s=>{
+    if(DIS.y!==y||DIS.q!==q||S.center!==c) return;
+    DIS.d=disNorm(s.exists?JSON.parse(JSON.stringify(s.data())):null);
+    if(S.tab==='dis') softRender();
+  },()=>{ DIS.d=DIS.d||disDefault(); if(S.tab==='dis') softRender(); });
+}
+let disTimer=null;
+function saveDis(){
+  if(!db){ lsSet(disLocalKey(),JSON.stringify(DIS.d)); return; }
+  clearTimeout(disTimer); const path=disPath(), body=JSON.parse(JSON.stringify(DIS.d));
+  disTimer=setTimeout(()=>enqueue(path,()=>db.doc(path).set(body)),700);
+}
+/* 月數：每月以 30 日計，滿 15 日算 1 個月，未滿 15 日算半個月 */
+function disMonths(fromIso,toIso){
+  const a=parseDate(fromIso), b=parseDate(toIso); if(!a||!b||b<a) return 0;
+  let m=0; for(let y=a.getFullYear(),mo=a.getMonth(); new Date(y,mo,1)<=b; mo++){ if(mo>11){mo=0;y++;}
+    const s=new Date(Math.max(a,new Date(y,mo,1))), e=new Date(Math.min(b,new Date(y,mo+1,0)));
+    const full=new Date(y,mo+1,0).getDate(), days=Math.round((e-s)/864e5)+1;
+    if(days>=full||days>=15) m+=1; else if(days>0) m+=0.5;
+  }
+  return m;
+}
+const qStartIso=()=>isoOf(new Date(DIS.y+1911,DIS.q*3-3,1)), qEndIso=()=>isoOf(new Date(DIS.y+1911,DIS.q*3,0));
+const kidFrom=k=>k.from||(k.enroll&&k.enroll>qStartIso()?k.enroll:qStartIso());
+const kidTo=k=>k.to||qEndIso();
+const kidMonths=k=>k.months!==''&&k.months!=null?n0(k.months):disMonths(kidFrom(k),kidTo(k));
+const kidFee=k=>k.feeX!==''&&k.feeX!=null?n0(k.feeX):(DLEV[k.level]?DLEV[k.level].fee*kidMonths(k):0);
+const kidCare=k=>k.careX!==''&&k.careX!=null?n0(k.careX):(DLEV[k.level]?DLEV[k.level].care*kidMonths(k):0);
+const annFrom=k=>k.enroll&&k.enroll>`${DIS.y+1911}-01-01`?k.enroll:`${DIS.y+1911}-01-01`;
+const annTo=()=>`${DIS.y+1911}-11-30`;
+const annMonths=k=>k.amonths!==''&&k.amonths!=null?n0(k.amonths):disMonths(annFrom(k),annTo());
+const annFee=k=>DLEV[k.level]?DLEV[k.level].fee*annMonths(k):0;
+const rocDot=iso=>{ const d=parseDate(iso); return d?`${d.getFullYear()-1911}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`:''; };
+const disTotals=d=>({fee:d.kids.reduce((a,k)=>a+kidFee(k),0), care:d.kids.reduce((a,k)=>a+kidCare(k),0)});
+const caregivers=d=>[...new Set(d.kids.map(k=>(k.cg||'').trim()).filter(Boolean))];
+const mStr=m=>m%1?m.toFixed(1):String(m);
+
+/* 附件、存摺 */
+const disSlotFiles=k=>[...((DIS.d&&DIS.d.files[k])||[]),...(DIS.local[k]||[])];
+async function disUpload(k,files){
+  const a=db?await getAssets():null; DIS.busy='上傳中…'; render();
+  for(const f of files){
+    if(!/pdf|image\//.test(f.type)){ toast(`「${f.name}」不是 PDF 或圖片，略過`); continue; }
+    if(a){ try{ const r=await a.upload(f); (DIS.d.files[k]=DIS.d.files[k]||[]).push({id:r.id,url:r.url,name:f.name,type:f.type||r.contentType}); }catch(e){ toast(`「${f.name}」上傳失敗`); } }
+    else (DIS.local[k]=DIS.local[k]||[]).push({file:f,name:f.name,type:f.type,local:true});
+  }
+  DIS.busy=''; saveDis(); render();
+}
+async function passbookUpload(owner,file){ // owner: '' = 中心，否則托育人員姓名
+  if(!/image\//.test(file.type)){ toast('存摺封面請用照片或掃描圖檔（JPG、PNG）'); return; }
+  const a=db?await getAssets():null; let ref;
+  if(a){ try{ const r=await a.upload(file); ref={id:r.id,url:r.url,name:file.name,type:file.type}; }catch(e){ toast('上傳失敗'); return; } }
+  else ref={local:true,name:file.name,type:file.type,obj:URL.createObjectURL(file)};
+  if(owner===''){ OPT.profile.passbook=ref; } else { const dir=staffDir(); dir[owner]={...(dir[owner]||{}),passbook:ref}; }
+  saveProfile(); render(); toast('存摺封面已上傳');
+}
+async function imgUrl(ref){
+  if(!ref) return '';
+  if(ref.obj) return ref.obj;
+  const key=ref.id; if(DIS.imgs[key]) return DIS.imgs[key];
+  try{ const b=await fileBytes(ref); DIS.imgs[key]=URL.createObjectURL(new Blob([b],{type:ref.type||'image/jpeg'})); }catch(e){ DIS.imgs[key]=''; }
+  return DIS.imgs[key];
+}
+
+/* ── 畫面 ── */
+function viewDis(){
+  const d=DIS.d, p=OPT.profile, yrs=[ROC_NOW-1,ROC_NOW,ROC_NOW+1], dir=staffDir();
+  const head=`<section class="card">
+    <div class="eyebrow">收托身障暨疑似發展遲緩幼兒・每季</div>
+    <div class="sec-h"><h2>身障補助申請</h2><span class="meta">${DIS.q===4?'隔年 1 月底前繳':`${DIS.q*3+1} 月底前繳`}</span></div>
+    <div class="form" style="margin-top:0;padding-top:0;border-top:0">
+      <div class="field"><label for="d-y">年度</label><select id="d-y">${yrs.map(y=>`<option value="${y}" ${y===DIS.y?'selected':''}>${y} 年</option>`).join('')}</select></div>
+      <div class="field"><label for="d-qq">季別</label><select id="d-qq">${[1,2,3,4].map(q=>`<option value="${q}" ${q===DIS.q?'selected':''}>第 ${q} 季（${q*3-2}–${q*3} 月）</option>`).join('')}</select></div>
+      <button class="btn" data-act="d-pdf" ${DIS.busy?'disabled':''}>${DIS.busy||'下載整份 PDF'}</button>
+      <button class="btn ghost" data-act="d-preview">${DIS.preview?'收起預覽':'預覽表格'}</button>
+    </div>
+    ${kaiOk()?`<p style="margin:10px 0 0;font-size:13px" class="muted"><span class="chip ok">標楷體</span>　這台裝置有標楷體，PDF 的表格會用標楷體。</p>`:`<div class="tip" style="margin-top:10px"><b>這台裝置沒有標楷體</b>　PDF 會改用相近的楷體。要用標楷體，請在 Windows 電腦產生 PDF。</div>`}
+  </section>`;
+  if(!d) return head+`<div class="empty">${CH.ding}<span>讀取這一季的資料中…</span></div>`;
+  const T=disTotals(d), cgs=caregivers(d);
+  const pv=DIS.preview?`<section class="card"><div class="sec-h"><h2>表格預覽</h2><span class="meta">附件不在預覽裡</span></div><div id="d-pv" class="pv"></div></section>`:'';
+  const missing=['unit','taxId','phone','address','owner'].filter(k=>!p[k]);
+  const prof=`<section class="card">
+    <div class="sec-h"><h2>1. 申請表</h2><span class="meta">${missing.length?`<a href="#opt">中心基本資料還有 ${missing.length} 欄沒填</a>`:'中心基本資料沿用優化補助那邊'}</span></div>
+    <div class="calc-io" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+      <div class="field"><label for="d-fill">填寫日期</label><input id="d-fill" type="date" data-d="fillDate" value="${esc(d.fillDate||'')}"></div>
+      <div class="field"><label for="d-rdate">領據開立日期（空白＝同填寫日期）</label><input id="d-rdate" type="date" data-d="receiptDate" value="${esc(d.receiptDate||'')}"></div>
+      <div class="field"><label for="d-cap">核定收托人數</label><input id="d-cap" type="number" data-d="cap" value="${esc(d.cap)}"></div>
+      <div class="field"><label for="d-act">實際收托人數</label><input id="d-act" type="number" data-d="act" value="${esc(d.act)}"></div>
+      <div class="field"><label for="d-email">e-mail</label><input id="d-email" data-pf2="email" value="${esc(p.email||'')}"></div>
+      <div class="field"><label for="d-fax">傳真</label><input id="d-fax" data-pf2="fax" value="${esc(p.fax||'')}"></div>
+      <div class="field"><label for="d-ns">領據金額寫法</label><select id="d-ns" data-d="numStyle"><option value="cap" ${d.numStyle!=='num'?'selected':''}>國字大寫（貳萬肆仟）</option><option value="num" ${d.numStyle==='num'?'selected':''}>阿拉伯數字</option></select></div>
+    </div>
+    <div class="out"><div><span class="k">收托特殊幼兒人數</span><span class="v">${d.kids.length} 人</span></div>
+      <div class="hl"><span class="k"><b>托育服務費</b><small>給托嬰中心</small></span><span class="v">$${money(T.fee)}</span></div>
+      <div class="hl2"><span class="k"><b>托育人員照顧費</b><small>給托育人員，每人一張領據</small></span><span class="v">$${money(T.care)}</span></div></div>
+  </section>`;
+  const kids=`<section class="card">
+    <div class="sec-h"><h2>2. 幼兒名冊</h2><span class="meta">${DIS.y} 年第 ${DIS.q} 季（${rocDot(qStartIso())}–${rocDot(qEndIso())}）</span></div>
+    <div class="tip" style="margin-bottom:10px"><b>月數自動算</b>　每月以 30 日計，滿 15 日算 1 個月，未滿 15 日算半個月。送托期間空白＝收托日（或季初）到季末。金額依障別自動帶入，也可以直接改。</div>
+    <div class="field" style="max-width:260px;margin-bottom:10px"><label for="d-ql">名冊「第___季」欄（空白＝${DIS.q}）</label><input id="d-ql" data-d="qLabel" value="${esc(d.qLabel||'')}" placeholder="例：3-4"></div>
+    <div class="tblwrap"><table class="ptbl"><thead><tr><th>姓名</th><th>身分證字號</th><th>出生</th><th>收托日期</th><th>送托起</th><th>送托迄</th><th>月數</th><th>通報日期</th><th>證明文件</th><th>障別</th><th>托育服務費</th><th>照顧費</th><th>托育人員</th><th></th></tr></thead><tbody>
+    ${d.kids.length?d.kids.map((k,i)=>`<tr>
+      <td><input id="dk-name-${i}" data-dk="name" data-i="${i}" value="${esc(k.name||'')}" style="width:70px"></td>
+      <td><input id="dk-idno-${i}" data-dk="idno" data-i="${i}" value="${esc(k.idno||'')}" style="width:105px"></td>
+      ${['birth','enroll','from','to'].map(f=>`<td><input type="date" id="dk-${f}-${i}" data-dk="${f}" data-i="${i}" value="${esc(k[f]||'')}"></td>`).join('')}
+      <td><input id="dk-months-${i}" class="num" type="number" step="0.5" data-dk="months" data-i="${i}" value="${k.months===''||k.months==null?'':k.months}" placeholder="${mStr(disMonths(kidFrom(k),kidTo(k)))}" style="width:52px"></td>
+      <td><input type="date" id="dk-report-${i}" data-dk="report" data-i="${i}" value="${esc(k.report||'')}" title="沒有通報就空白（表上印「無」）"></td>
+      <td><select id="dk-doc-${i}" data-dk="doc" data-i="${i}">${[1,2,3].map(v=>`<option value="${v}" ${n0(k.doc||1)===v?'selected':''}>${v}.${DDOC[v]}</option>`).join('')}</select></td>
+      <td><select id="dk-level-${i}" data-dk="level" data-i="${i}">${[1,2,3,4,5].map(v=>`<option value="${v}" ${n0(k.level||1)===v?'selected':''}>${DLEV[v].n}</option>`).join('')}</select></td>
+      <td><input id="dk-feeX-${i}" class="num" type="number" data-dk="feeX" data-i="${i}" value="${k.feeX===''||k.feeX==null?'':k.feeX}" placeholder="${kidFee({...k,feeX:''})}" style="width:72px"></td>
+      <td><input id="dk-careX-${i}" class="num" type="number" data-dk="careX" data-i="${i}" value="${k.careX===''||k.careX==null?'':k.careX}" placeholder="${kidCare({...k,careX:''})}" style="width:72px"></td>
+      <td><input id="dk-cg-${i}" data-dk="cg" data-i="${i}" value="${esc(k.cg||'')}" list="cg-list" style="width:70px"></td>
+      <td><button class="x" data-act="dk-del" data-i="${i}" aria-label="刪除" style="width:28px;height:28px">×</button></td></tr>`).join('')
+      :`<tr><td colspan="14" class="muted" style="text-align:left;padding:10px">還沒有幼兒。按「新增幼兒」。</td></tr>`}
+    </tbody></table></div>
+    <datalist id="cg-list">${Object.keys(dir).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+    <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="docbtn" data-act="dk-add">＋ 新增幼兒</button>
+      ${DIS.prevKids&&DIS.prevKids.length&&!d.kids.length?`<button class="docbtn" data-act="dk-copy">從上一季複製 ${DIS.prevKids.length} 位</button>`:''}
+      <label class="tk" style="font-weight:500;font-size:14px"><input type="checkbox" id="d-annual" data-d="annual" ${d.annual?'checked':''}><span>同時附「預計當年度」名冊（收托日到 11 月底）</span></label></div>
+  </section>`;
+  const cgSec=`<section class="card">
+    <div class="sec-h"><h2>3. 領據</h2><span class="meta">托嬰中心 1 張＋托育人員 ${cgs.length} 張</span></div>
+    <div class="task" style="gap:6px"><b>托嬰中心（托育服務費 $${money(T.fee)}）</b>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px">存摺封面：${p.passbook?`<span class="chip ok">已上傳</span> ${esc(p.passbook.name)}`:'<span class="chip due">未上傳</span>'}
+      <label class="docbtn" style="cursor:pointer">${p.passbook?'換一張':'上傳照片'}<input type="file" accept="image/*" data-pb="" id="pb-center" hidden></label></div>
+      <span class="muted" style="font-size:12.5px">會貼在領據「請浮貼存摺封面影本」的位置，之後每季共用。</span></div>
+    ${cgs.length?cgs.map(n=>{ const s=dir[n]||{}, amt=d.kids.filter(k=>(k.cg||'').trim()===n).reduce((a,k)=>a+kidCare(k),0); return `<div class="task" style="gap:6px;margin-top:10px"><b>托育人員 ${esc(n)}（照顧費 $${money(amt)}）</b>
+      <div class="calc-io" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+        ${[['idno','身分證字號'],['address','地址'],['bank','銀行及分行名稱'],['account','帳號'],['accName','戶名（空白＝本人）']].map(([f,l])=>`<div class="field" ${f==='address'?'style="grid-column:1/-1"':''}><label for="cg-${f}-${esc(n)}">${l}</label><input id="cg-${f}-${esc(n)}" data-cg="${esc(n)}" data-cf="${f}" value="${esc(s[f]||'')}"></div>`).join('')}
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px">存摺封面：${s.passbook?`<span class="chip ok">已上傳</span> ${esc(s.passbook.name)}`:'<span class="chip due">未上傳</span>'}
+      <label class="docbtn" style="cursor:pointer">${s.passbook?'換一張':'上傳照片'}<input type="file" accept="image/*" data-pb="${esc(n)}" id="pb-${esc(n)}" hidden></label></div></div>`; }).join('')
+      :`<div class="empty" style="margin-top:8px">${CH.ding}<span>在幼兒名冊的「托育人員」欄填上負責的老師，這裡就會出現她的領據資料。</span></div>`}
+  </section>`;
+  const att=`<section class="card">
+    <div class="sec-h"><h2>4. 附件</h2><span class="meta">照申請表的檢附順序接在後面</span></div>
+    ${!db?`<div class="tip" style="margin-bottom:10px">目前沒有連上資料庫，附件只放在這次打開的頁面。</div>`:''}
+    <div style="display:flex;flex-direction:column;gap:10px">
+    ${DIS_SLOTS.map(s=>{ const fs=disSlotFiles(s.k); return `<div class="task ${fs.length?'done':''}" style="gap:4px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="chip ${fs.length?'ok':'due'}">${fs.length?`${fs.length} 個檔`:'未上傳'}</span><b style="flex:1;min-width:160px">${s.label}</b>
+      <label class="docbtn" style="cursor:pointer">＋ 選檔案<input type="file" multiple accept="application/pdf,image/*" data-dslot="${s.k}" id="d-file-${s.k}" hidden></label></div>
+      ${fs.length?`<ul class="docs" style="padding-left:0">${fs.map((f,i)=>`<li style="display:flex;gap:8px;align-items:center;font-size:13.5px"><span style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(f.name)}${f.local?'（只在這台）':''}</span><button class="docbtn" data-act="d-rmfile" data-k="${s.k}" data-i="${f.local?i-((DIS.d.files[s.k]||[]).length):i}" data-local="${f.local?1:''}">移除</button></li>`).join('')}</ul>`:''}
+    </div>`;}).join('')}
+    </div></section>`;
+  return head+pv+prof+kids+cgSec+att;
+}
+
+/* ── 表格頁面 ── */
+function moneyParts(amt,cap){ // 拾萬 萬 仟 佰 拾 元
+  const s=String(Math.round(amt)).padStart(6,'0').slice(-6).split('').map(Number);
+  return s.map(x=>cap?CAPN[x]:String(x));
+}
+function pageDisApply(d,p){
+  const T=disTotals(d), [fy,fm,fd]=rocParts(d.fillDate), ck=b=>b?'■':'□';
+  const has=k=>disSlotFiles(k).length>0, docs=new Set(d.kids.map(k=>n0(k.doc||1)));
+  const rep=d.kids.map(k=>k.report).filter(Boolean).sort()[0]; const [ry,rm,rd]=rocParts(rep);
+  const g=[158,135,130,95,157].map(w=>w*1.0);
+  const L='line-height:1.9';
+  return `<div class="pg p" style="padding:47px 76px 0">
+    <div style="text-align:center;font-size:24px;font-weight:700;line-height:1.6">臺南市政府社會局<br>補助托嬰中心及居家式托育服務提供者<br>收托身心障礙暨疑似發展遲緩幼兒實施計畫<br><span style="display:block;margin-top:14px">托嬰中心托育服務費暨托育人員照顧費申請表</span></div>
+    <div style="text-align:right;font-size:18.7px;font-weight:700;margin:10px 0 6px">填寫日期：${fy||'&nbsp;&nbsp;&nbsp;&nbsp;'}年${fm||'&nbsp;&nbsp;&nbsp;'}月${fd||'&nbsp;&nbsp;&nbsp;'}日(請務必填寫)</div>
+    <table class="ft" style="width:643px;font-size:16px"><colgroup>${g.map(w=>`<col style="width:${w}px">`).join('')}</colgroup>
+    <tr style="height:44px"><td class="c">托嬰中心名稱</td><td colspan="2">${esc(p.unit||'')}</td><td class="c">統一編號</td><td>${esc(p.taxId||'')}</td></tr>
+    <tr style="height:38px"><td class="c">電話</td><td colspan="2">${esc(p.phone||'')}</td><td class="c">傳真</td><td>${esc(p.fax||'')}</td></tr>
+    <tr style="height:38px"><td class="c">e-mail</td><td colspan="4">${esc(p.email||'')}</td></tr>
+    <tr style="height:38px"><td class="c">托嬰中心地址</td><td colspan="4">${esc(p.address||'')}</td></tr>
+    <tr style="height:44px"><td class="c">核定收托人數</td><td colspan="2">${esc(d.cap)}</td><td class="c">實際收托<br>人數</td><td>${esc(d.act)}</td></tr>
+    <tr style="height:44px"><td class="c">收托特殊幼兒人數</td><td colspan="4">${d.kids.length||''}</td></tr>
+    <tr style="height:36px"><td class="c">補助項目</td><td class="c">請領金額</td><td colspan="3" class="c">檢附資料</td></tr>
+    <tr style="height:200px"><td class="c" style="font-weight:700">托育服務費</td><td class="c">${T.fee?money(T.fee)+' 元':''}</td>
+      <td colspan="3" rowspan="2" style="vertical-align:top;padding:8px 10px;${L}">${ck(true)} 托育服務費暨托育人員照顧費名冊<br>${ck(has('contract'))} 托育契約<br>(1-3擇一檢附)<br>${ck(docs.has(1))} 1.有效期間之身心障礙證明<br>${ck(docs.has(3))} 2.有效期間之醫院診斷證明<br>${ck(docs.has(2))} 3.有效期間之綜合報告書<br>${ck(!!rep)} <u>&nbsp;${ry||'&nbsp;&nbsp;'}&nbsp;</u>年<u>&nbsp;${rm||'&nbsp;&nbsp;'}&nbsp;</u>月<u>&nbsp;${rd||'&nbsp;&nbsp;'}&nbsp;</u>日通報臺南市兒童早期發展服務管理中心(佐證完成通報之相關資料)(有通報者檢附)<br>${ck(has('training'))} 研習證明<br>${ck(T.fee>0)} 領據：托嬰中心<br>${ck(T.care>0)} 領據：托育人員</td></tr>
+    <tr style="height:220px"><td class="c" style="font-weight:700">托育人員照顧費</td><td class="c">${T.care?money(T.care)+' 元':''}</td></tr>
+    </table>
+    <div style="font-size:16px;margin-top:22px;display:flex;gap:150px"><span>托嬰中心主管人員(簽章)：</span><span>托嬰中心用印：</span></div>
+  </div>`;
+}
+const LEV_NOTE=(arr)=>arr.map((v,i)=>`${i+1}.${DLEV[i+1].n}${v.toLocaleString('en-US')}元`).join('<br>');
+function pageDisRoster(d,p,annual){
+  const tw=[285,683,1010,988,1010,976,1134,992,993,1559,2126,2126,1843];
+  const aw=[285,683,1010,988,1010,2110,992,993,1559,4252,1843];
+  const W=annual?aw:tw, sum=W.reduce((a,b)=>a+b,0), avail=1123-96*2+30, f=avail/ (sum/15);
+  const col=W.map(w=>(w/15*f*0.999).toFixed(1));
+  const T=disTotals(d), aT=d.kids.reduce((a,k)=>a+annFee(k),0);
+  const n=Math.max(4,d.kids.length), fs=13, sm=10.5;
+  const ql=d.qLabel||String(DIS.q);
+  const rows=Array.from({length:n},(_,i)=>{ const k=d.kids[i];
+    if(!k) return `<tr style="height:26px"><td class="c">${i<2?i+1:''}</td>${'<td></td>'.repeat(W.length-1)}</tr>`;
+    const common=`<td class="c">${i+1}</td><td class="c">${esc(k.name)}</td><td class="c">${esc(k.idno)}</td><td class="c">${rocDot(k.birth)}</td><td class="c">${rocDot(k.enroll)}</td>`;
+    return annual
+      ? `<tr style="height:42px">${common}<td class="c">${rocDot(annFrom(k))}至<br>${rocDot(annTo())}</td><td class="c">${mStr(annMonths(k))}個月</td><td class="c">${k.report?rocDot(k.report):'無'}</td><td class="c">${n0(k.doc||1)}</td><td class="c">${fmtN(annFee(k))}</td><td></td></tr>`
+      : `<tr style="height:42px">${common}<td class="c">${esc(ql)}</td><td class="c">${rocDot(kidFrom(k))}至<br>${rocDot(kidTo(k))}</td><td class="c">${mStr(kidMonths(k))}</td><td class="c">${k.report?rocDot(k.report):'無'}</td><td class="c">${n0(k.doc||1)}</td><td class="c">${fmtN(kidFee(k))}</td><td class="c">${fmtN(kidCare(k))}</td><td></td></tr>`;
+  }).join('');
+  const unit=(p.unit||'').replace(/^臺南市/,'').replace(/托嬰中心$/,'');
+  const notes=`填表注意事項：<br>1.&nbsp;&nbsp;請就實際收托狀況核實填寫。<br>2.&nbsp;&nbsp;特殊需求幼兒若經本市立案托嬰中心或已登記之居家式托育服務提供者通報至本市兒童早期發展服務管理中心，追溯自通報日起予以補助。<br>3.&nbsp;&nbsp;補助費之核算，每月以30日計算，滿15日以上以1個月計；未滿15日以半個月計。另每日收托未達6小時，以半日計。<br>4.&nbsp;&nbsp;檢附資料影本請加註「與正本相符」及主管人員印章。`;
+  const head=annual
+    ? `<tr style="height:30px"><td colspan="11" class="c" style="font-size:16px;font-weight:700">臺南市政府社會局補助托嬰中心及居家式托育服務提供者收托身心障礙暨疑似發展遲緩幼兒實施計畫</td></tr>
+       <tr style="height:36px"><td colspan="11" class="c" style="font-size:21px;font-weight:700">托嬰中心托育服務費照顧費名冊(預計當年度收托的人數及金額)</td></tr>
+       <tr style="height:38px"><td colspan="3" class="c">托嬰中心名稱</td><td colspan="8" class="c" style="font-size:20px;font-weight:700">臺南市 <u>&nbsp;${esc(unit)}&nbsp;</u> 托嬰中心</td></tr>
+       <tr style="height:26px"><td rowspan="2" class="c">序<br>號</td><td rowspan="2" class="c">幼兒<br>姓名</td><td rowspan="2" class="c">身分證<br>字號</td><td rowspan="2" class="c">出生<br>年月日</td><td rowspan="2" class="c">收托<br>日期</td><td rowspan="2" class="c">預計當年度<br>送托日期<br>(截至11月底)</td><td rowspan="2" class="c">請領<br>___個月</td><td rowspan="2" class="c" style="font-size:${sm}px">報本市兒童發展管理中心日期<br>計算(起)</td><td class="c" style="font-size:${sm}px">檢附資料<br>請填入編號</td><td class="c thk"><b style="font-size:15px">托育服務費</b><br><span style="font-size:${sm}px">請填寫金額</span></td><td rowspan="2" class="c" style="font-weight:700;font-size:15px">備註</td></tr>
+       <tr style="height:90px"><td style="font-size:${sm}px;line-height:1.5">1.身心障礙證明<br>2.綜合評估報告書<br>3.診斷證明書</td><td class="thk" style="font-size:${sm}px;line-height:1.5">${LEV_NOTE([8000,5000,1500,1500,1500])}</td></tr>`
+    : `<tr style="height:30px"><td colspan="13" class="c" style="font-size:16px;font-weight:700">臺南市政府社會局補助托嬰中心及居家式托育服務提供者收托身心障礙暨疑似發展遲緩幼兒實施計畫</td></tr>
+       <tr style="height:36px"><td colspan="13" class="c" style="font-size:21px;font-weight:700">托嬰中心托育服務費暨托育人員照顧費名冊</td></tr>
+       <tr style="height:38px"><td colspan="3" class="c">托嬰中心名稱</td><td colspan="8" class="c" style="font-size:20px;font-weight:700">臺南市 <u>&nbsp;${esc(unit)}&nbsp;</u> 托嬰中心</td><td colspan="2" class="c thk" style="font-size:20px;font-weight:700">托育人員照顧費</td></tr>
+       <tr style="height:26px"><td rowspan="2" class="c">序<br>號</td><td rowspan="2" class="c">幼兒<br>姓名</td><td rowspan="2" class="c">身分證<br>字號</td><td rowspan="2" class="c">出生<br>年月日</td><td rowspan="2" class="c">收托<br>日期</td><td rowspan="2" class="c">第<u>&nbsp;${esc(ql)}&nbsp;</u>季</td><td rowspan="2" class="c">每季<br>送托日期</td><td rowspan="2" class="c">請領<br><u>&nbsp;&nbsp;</u>個月</td><td rowspan="2" class="c" style="font-size:${sm}px">報本市兒童發展管理中心日期<br>計算(起)</td><td class="c" style="font-size:${sm}px">檢附資料<br>請填入編號</td><td class="c thk"><b style="font-size:15px">托育服務費</b><br><span style="font-size:${sm}px">請填寫金額</span></td><td class="c thk"><b style="font-size:15px">托育人員照顧費</b><br><span style="font-size:${sm}px">請填寫金額</span></td><td rowspan="2" class="c" style="font-weight:700;font-size:15px">托育人員簽章</td></tr>
+       <tr style="height:90px"><td style="font-size:${sm}px;line-height:1.5">1.身心障礙證明<br>2.綜合評估報告書<br>3.診斷證明書</td><td class="thk" style="font-size:${sm}px;line-height:1.5">${LEV_NOTE([8000,5000,1500,1500,1500])}</td><td class="thk" style="font-size:${sm}px;line-height:1.5">${LEV_NOTE([5000,2500,1500,1500,1500])}</td></tr>`;
+  const foot=annual
+    ? `<tr style="height:30px"><td colspan="9" class="r" style="font-weight:700">總計元(新臺幣)</td><td class="c thk">${aT?fmtN(aT)+'元':''}</td><td></td></tr>
+       <tr style="height:34px"><td colspan="5" style="font-size:18px;font-weight:700">托嬰中心托育服務費</td><td colspan="6">申請總計新臺幣<u>&nbsp;&nbsp;${aT?fmtN(aT):'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}&nbsp;&nbsp;</u>元整</td></tr>`
+    : `<tr style="height:30px"><td colspan="10" class="r" style="font-weight:700">總計元(新臺幣)</td><td class="r thk">${T.fee?fmtN(T.fee):''}</td><td class="r thk">${T.care?fmtN(T.care):''}</td><td></td></tr>
+       <tr style="height:34px"><td colspan="5" style="font-size:18px;font-weight:700">托嬰中心托育服務費</td><td colspan="8">申請總計新臺幣<u>&nbsp;${T.fee?fmtN(T.fee):'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}&nbsp;&nbsp;</u>元整</td></tr>
+       <tr style="height:34px"><td colspan="5" style="font-size:18px;font-weight:700">托嬰中心托育人員照顧費</td><td colspan="8">申請總計新臺幣<u>&nbsp;${T.care?fmtN(T.care):'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}&nbsp;&nbsp;</u>元整</td></tr>`;
+  return `<div class="pg l" style="padding:40px 81px 0"><table class="ft dis" style="width:${avail}px;font-size:${fs}px"><colgroup>${col.map(w=>`<col style="width:${w}px">`).join('')}</colgroup>
+    ${head}${rows}${foot}
+    <tr><td colspan="${W.length}" style="font-size:11px;line-height:1.6;padding:4px 6px">${notes}</td></tr></table>
+    <div style="font-size:15px;margin-top:4px;display:flex;gap:260px"><span>托嬰中心主管人員(簽章)：</span><span>托嬰中心用印：</span></div></div>`;
+}
+function disAmountLine(amt,cap){
+  const s=moneyParts(amt,cap), U=['拾','萬','仟','佰','拾','元'];
+  return '計新臺幣 '+U.map((u,i)=>`<u>&nbsp;${amt?s[i]:'&nbsp;&nbsp;'}&nbsp;</u>${u}`).join(' ')+'，確實無訛。';
+}
+function pageDisReceiptCenter(d,p,pb){
+  const T=disTotals(d), [ry,rm,rd]=rocParts(d.receiptDate||d.fillDate), cap=d.numStyle!=='num';
+  const B='font-size:26.7px;line-height:53px;margin:0;font-weight:700', N='font-size:26.7px;line-height:44px;margin:0';
+  return `<div class="pg p" style="padding:47px 66px 0 57px">
+    <div style="text-align:center;font-size:34.7px;font-weight:700;line-height:66px">領據</div>
+    <p style="${B};text-indent:2em">茲收到臺南市政府社會局撥付 <u>&nbsp;${DIS.y}&nbsp;</u> 年度 <u>&nbsp;${DIS.q}&nbsp;</u> 季臺南市政府社會局補助托嬰中心及居家式托育服務提供者收托身心障礙暨疑似發展遲緩幼兒實施計畫—</p>
+    <p style="${B}"><u>托嬰中心托育服務費，</u></p>
+    <p style="font-size:26.7px;line-height:40px;margin:0">${disAmountLine(T.fee,cap)}</p>
+    <div style="height:150px;display:flex;align-items:flex-end;justify-content:center;margin-top:4px">${pb?`<img src="${pb}" style="max-height:146px;max-width:420px;object-fit:contain">`:''}</div>
+    <div style="text-align:center;font-size:14.7px">請浮貼存摺封面影本</div>
+    <div style="border-top:1.5px dashed #000;margin:2px 0 20px"></div>
+    <p style="${N};position:relative">機構名稱：${esc(p.unit||'')}</p>
+    <p style="${N};margin-top:28px;position:relative">負責人簽章：<span class="stamp" style="left:385px;top:-30px;width:65px;height:63px">負責<br>人章</span><span class="stamp" style="left:505px;top:-62px;width:200px;height:290px;align-items:center;padding-top:0">機構圖記</span></p>
+    <p style="${N};margin-top:28px">統一編號：${esc(p.taxId||'')}</p>
+    <p style="${N};margin-top:28px">立案地址：${esc(p.address||'')}</p>
+    <p style="${N};margin-top:12px">聯絡電話：${esc(p.phone||'')}</p>
+    <p style="${N};margin-top:40px">中　華　民　國<u>&nbsp;&nbsp;${ry||'&nbsp;&nbsp;&nbsp;&nbsp;'}&nbsp;&nbsp;</u>年<u>&nbsp;&nbsp;${rm||'&nbsp;&nbsp;&nbsp;'}&nbsp;&nbsp;</u>月<u>&nbsp;&nbsp;${rd||'&nbsp;&nbsp;&nbsp;'}&nbsp;&nbsp;</u>日<span style="color:#888">(開立日期)</span></p>
+  </div>`;
+}
+function pageDisReceiptCg(d,name,pb){
+  const s=staffDir()[name]||{}, amt=d.kids.filter(k=>(k.cg||'').trim()===name).reduce((a,k)=>a+kidCare(k),0);
+  const cap=d.numStyle!=='num', [ry,rm,rd]=rocParts(d.receiptDate||d.fillDate);
+  const B='font-size:26.7px;line-height:53px;margin:0;font-weight:700', N='font-size:26.7px;line-height:44px;margin:0';
+  return `<div class="pg p" style="padding:38px 66px 0 76px">
+    <div style="text-align:center;font-size:33.3px;font-weight:700;line-height:66px">領據</div>
+    <p style="${B}">茲收到臺南市政府社會局撥付 <u>&nbsp;${DIS.y}&nbsp;</u> 年度 <u>&nbsp;${DIS.q}&nbsp;</u> 季臺南市政府社會局補助托嬰中心及居家式托育服務提供者收托身心障礙暨疑似發展遲緩幼兒實施計畫—<u>托嬰中心托育人員照顧費，</u></p>
+    <p style="font-size:26.7px;line-height:53px;margin:0">${disAmountLine(amt,cap)}</p>
+    <div style="height:56px"></div>
+    <p style="${N};font-weight:700">托嬰中心托育人員</p>
+    <p style="${N}">姓名：${esc(name)}<span style="font-size:21.3px;margin-left:110px">(簽名並蓋章)</span></p>
+    <p style="${N}">地址：${esc(s.address||'')}</p>
+    <p style="${N}">身分證字號：${esc(s.idno||'')}</p>
+    <p style="${N}">銀行及分行名稱：${esc(s.bank||'')}</p>
+    <p style="${N}">帳號：${esc(s.account||'')}</p>
+    <p style="${N}">戶名：${esc(s.accName||name)}</p>
+    <div style="text-align:center;font-size:14.7px;margin-top:6px">請浮貼存摺封面影本</div>
+    <div style="border-top:1.5px dashed #000;margin:2px 0 8px"></div>
+    <div style="height:250px;display:flex;align-items:center;justify-content:center">${pb?`<img src="${pb}" style="max-height:246px;max-width:560px;object-fit:contain">`:''}</div>
+    <p style="font-size:24px;margin:10px 0 0;text-align:center">中 華 民 國 <u>&nbsp;&nbsp;&nbsp;${ry||'&nbsp;&nbsp;&nbsp;&nbsp;'}&nbsp;&nbsp;&nbsp;</u> 年 <u>&nbsp;&nbsp;&nbsp;${rm||'&nbsp;&nbsp;&nbsp;'}&nbsp;&nbsp;&nbsp;</u> 月 <u>&nbsp;&nbsp;&nbsp;${rd||'&nbsp;&nbsp;&nbsp;'}&nbsp;&nbsp;&nbsp;</u> 日</p>
+  </div>`;
+}
+async function disPages(){
+  const d=DIS.d, p=OPT.profile, dir=staffDir();
+  const pbC=await imgUrl(p.passbook);
+  const cgPages=[]; for(const n of caregivers(d)) cgPages.push(pageDisReceiptCg(d,n,await imgUrl((dir[n]||{}).passbook)));
+  return {apply:pageDisApply(d,p), roster:pageDisRoster(d,p,false), annual:d.annual?pageDisRoster(d,p,true):'', rc:pageDisReceiptCenter(d,p,pbC), cg:cgPages};
+}
+async function renderDisPreview(){
+  const el=$('d-pv'); if(!el) return; const pg=await disPages();
+  el.innerHTML=[pg.apply,pg.roster,pg.annual,pg.rc,...pg.cg].filter(Boolean).map(h=>`<div class="pvbox ${h.includes('pg l')?'land':''}"><div class="pvin">${h}</div></div>`).join('');
+}
+async function disPdf(){
+  if(!DIS.d) return; const warn=[];
+  try{
+    DIS.busy='準備中…'; render(); await libs();
+    const {PDFDocument}=window.PDFLib, out=await PDFDocument.create(), stage=$('pdfstage'), pg=await disPages();
+    const htmls=[pg.apply,pg.roster,pg.annual,pg.rc,...pg.cg].filter(Boolean);
+    let done=0;
+    for(const html of htmls){
+      stage.innerHTML=html; const el=stage.firstElementChild, land=el.classList.contains('l');
+      await Promise.all([...el.querySelectorAll('img')].map(im=>im.complete?0:new Promise(r=>{im.onload=im.onerror=r;})));
+      try{ if(!kaiOk()) await document.fonts.load('20px "LXGW WenKai TC"', el.textContent); await document.fonts.ready; }catch(e){}
+      const c=await window.html2canvas(el,{scale:2,backgroundColor:'#ffffff',logging:false});
+      const img=await out.embedJpg(dataUrlBytes(c.toDataURL('image/jpeg',.92)));
+      const [w,h]=land?[841.89,595.28]:[595.28,841.89]; out.addPage([w,h]).drawImage(img,{x:0,y:0,width:w,height:h});
+      const b=document.querySelector('[data-act="d-pdf"]'); if(b) b.textContent=`產生中 ${++done}/${htmls.length}…`;
+    }
+    for(const s of DIS_SLOTS) for(const f of disSlotFiles(s.k)){
+      try{ const bytes=await fileBytes(f), t=f.type||'';
+        if(t.includes('pdf')){ const src=await PDFDocument.load(bytes,{ignoreEncryption:true}); (await out.copyPages(src,src.getPageIndices())).forEach(pp=>out.addPage(pp)); }
+        else { const im=t.includes('png')?await out.embedPng(bytes):(t.includes('jpeg')||t.includes('jpg'))?await out.embedJpg(bytes):await out.embedJpg(await toJpeg(bytes,t));
+          const land=im.width>im.height, [W,H]=land?[841.89,595.28]:[595.28,841.89], m=24, sc=Math.min((W-2*m)/im.width,(H-2*m)/im.height);
+          out.addPage([W,H]).drawImage(im,{x:(W-im.width*sc)/2,y:(H-im.height*sc)/2,width:im.width*sc,height:im.height*sc}); }
+      }catch(e){ warn.push(`${s.label}「${f.name}」`); }
+    }
+    stage.innerHTML='';
+    const bytes=await out.save(); DIS.busy='下載中…'; render();
+    if(OPT.downloads===undefined){ try{ OPT.downloads=await claude.use('downloads'); }catch(e){ OPT.downloads=null; } }
+    const name=`${CENTERS[S.center].name}_身障補助_${DIS.y}年第${DIS.q}季.pdf`;
+    if(!OPT.downloads) toast('這個畫面不能下載檔案，請在電腦瀏覽器開啟');
+    else { try{ await OPT.downloads.save({filename:name,data:bytes}); toast(warn.length?`已下載，但這些檔案讀不到：${warn.join('、')}`:`已下載 ${name}（${out.getPageCount()} 頁）`); }
+      catch(e){ if(e&&e.code!=='declined') toast('下載失敗，請再按一次'); } }
+  }catch(e){ console.error(e); toast('PDF 產生失敗，請確認網路後再試一次'); }
+  finally{ DIS.busy=''; render(); }
+}
+async function disLoadPrev(){
+  let y=DIS.y,q=DIS.q-1; if(q<1){q=4;y--;} DIS.prevKids=null;
+  if(!db){ try{ DIS.prevKids=(JSON.parse(lsGet(`local:${S.center}:dis:${y}-q${q}`)||'{}').kids)||[]; }catch(e){} return; }
+  try{ const s=await db.doc(`${base()}/dis/${y}-q${q}`).get(); DIS.prevKids=s.exists?((s.data().kids)||[]).filter(Boolean):[]; }catch(e){}
+  if(S.tab==='dis') softRender();
+}
+
+function updKidRow(i){ const k=DIS.d&&DIS.d.kids[i]; if(!k) return;
+  const set=(id,v)=>{ const e=$(id); if(e) e.placeholder=v; };
+  set('dk-months-'+i,mStr(disMonths(kidFrom(k),kidTo(k)))); set('dk-feeX-'+i,kidFee({...k,feeX:''})); set('dk-careX-'+i,kidCare({...k,careX:''})); }
+/* ── 互動 ── */
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act^="d-"],[data-act^="dk-"]'); if(!el) return;
+  const a=el.dataset.act, d=DIS.d; if(!d&&a!=='d-preview') return;
+  if(a==='d-pdf') disPdf();
+  else if(a==='d-preview'){ DIS.preview=!DIS.preview; render(); }
+  else if(a==='dk-add'){ d.kids.push({name:'',idno:'',birth:'',enroll:'',from:'',to:'',months:'',report:'',doc:1,level:1,feeX:'',careX:'',cg:''}); saveDis(); render(); }
+  else if(a==='dk-copy'){ d.kids=(DIS.prevKids||[]).map(k=>({...k,from:'',to:'',months:'',feeX:'',careX:''})); saveDis(); render(); }
+  else if(a==='dk-del'){ d.kids.splice(+el.dataset.i,1); saveDis(); render(); }
+  else if(a==='d-rmfile'){ const k=el.dataset.k,i=+el.dataset.i;
+    if(el.dataset.local){ DIS.local[k].splice(i,1); render(); return; }
+    const f=d.files[k][i]; d.files[k].splice(i,1); saveDis(); render(); getAssets().then(a=>{ if(a&&f&&f.id) a.delete(f.id).catch(()=>{}); }); }
+});
+document.addEventListener('change',e=>{
+  const el=e.target; if(S.tab!=='dis'||!$('main').contains(el)) return;
+  if(el.id==='d-y'||el.id==='d-qq'){ DIS.y=+$('d-y').value; DIS.q=+$('d-qq').value; disSubscribe(); disLoadPrev(); render(); return; }
+  if(el.dataset.dslot&&el.files.length){ disUpload(el.dataset.dslot,[...el.files]); el.value=''; return; }
+  if(el.dataset.pb!==undefined&&el.files[0]){ passbookUpload(el.dataset.pb,el.files[0]); el.value=''; return; }
+  const d=DIS.d; if(!d) return;
+  if(el.dataset.d==='annual'){ d.annual=el.checked; saveDis(); }
+  else if(el.dataset.d==='numStyle'){ d.numStyle=el.value; saveDis(); }
+  else if(el.dataset.dk){ updKidRow(+el.dataset.i); setTimeout(softRender,0); }
+  if(DIS.preview) renderDisPreview();
+});
+document.addEventListener('input',e=>{
+  const el=e.target; if(S.tab!=='dis'||!DIS.d) return; const d=DIS.d;
+  if(el.dataset.d&&!['annual','numStyle'].includes(el.dataset.d)){ d[el.dataset.d]=el.value; saveDis(); }
+  else if(el.dataset.pf2){ OPT.profile[el.dataset.pf2]=el.value; saveProfile(); }
+  else if(el.dataset.dk){ const k=d.kids[+el.dataset.i], f=el.dataset.dk;
+    k[f]=['doc','level'].includes(f)?n0(el.value):(['months','feeX','careX'].includes(f)?(el.value===''?'':n0(el.value)):el.value);
+    updKidRow(+el.dataset.i); saveDis(); }
+  else if(el.dataset.cg){ const dir=staffDir(), n=el.dataset.cg; dir[n]={...(dir[n]||{}),[el.dataset.cf]:el.value}; saveProfile(); }
+  else return;
+  if(DIS.preview){ clearTimeout(DIS._pv); DIS._pv=setTimeout(renderDisPreview,500); }
+});
+
 /* ───────── 互動 ───────── */
 document.addEventListener('click',e=>{
   const cb=e.target.closest('[data-center]');
@@ -1247,6 +1620,7 @@ document.addEventListener('click',e=>{
   else if(a==='newtype'){ S.newType = S.newType===el.dataset.type?null:el.dataset.type; render(); const n=$('nc-name'); if(n) n.focus(); }
   else if(a==='togglecase'){ S.caseOpen = S.caseOpen===el.dataset.id?null:el.dataset.id; S.confirmDel=null; render(); }
   else if(a==='opencase'){ S.caseOpen=el.dataset.id; }
+  else if(a==='godis'){ DIS.y=+el.dataset.y; DIS.q=+el.dataset.q; disSubscribe(); DIS.prevKids=undefined; }
   else if(a==='goopt'){ OPT.y=+el.dataset.y; OPT.q=+el.dataset.q; optSubscribe(); }
   else if(a==='delask'){ S.confirmDel=el.dataset.id; render(); }
   else if(a==='delno'){ S.confirmDel=null; render(); }
@@ -1289,7 +1663,7 @@ document.addEventListener('submit',e=>{
 
 function route(){
   const h=(location.hash||'').slice(1);
-  S.tab=['home','calendar','cases','calc','opt'].includes(h)?h:'home';
+  S.tab=['home','calendar','cases','calc','opt','dis'].includes(h)?h:'home';
   render(); window.scrollTo(0,0);
 }
 addEventListener('hashchange',route);
