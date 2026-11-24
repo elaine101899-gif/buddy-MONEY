@@ -266,6 +266,27 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 .pg .sm{font-size:10.7px;color:#7f7f7f}
 .pg .stamp{position:absolute;border:1.3px dashed #5b7fb5;display:flex;justify-content:center;align-items:flex-start;text-align:center;font-size:13px;color:#333;padding-top:8px;line-height:1.4}
 .ver{position:fixed;left:calc(10px + env(safe-area-inset-left,0px));bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:8;font-family:var(--f-num);font-size:11.5px;font-weight:600;color:var(--muted);background:var(--ground);border:1.5px solid var(--track);border-radius:999px;padding:1px 9px;pointer-events:none;font-variant-numeric:tabular-nums}
+/* 月曆 */
+.mcal-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.mcal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:2px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
+.mcal-h{text-align:center;font-size:12.5px;font-weight:700;color:var(--muted);padding:6px 0;border-bottom:1.5px solid var(--track)}
+.mcal-d{min-height:112px;border-right:1px solid var(--track);border-bottom:1px solid var(--track);padding:4px 4px 6px;display:flex;flex-direction:column;gap:2px;cursor:pointer;min-width:0}
+.mcal-d:nth-child(7n){border-right:0}
+.mcal-d:hover{background:var(--ground)}
+.mcal-d.mo{background:var(--ground)}.mcal-d.mo .mcal-n{opacity:.45}
+.mcal-n{text-align:center;font-size:12.5px;font-weight:700;margin-bottom:2px}
+.mcal-n .today{display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:50%;background:var(--teal);color:#fff}
+.ev{display:flex;align-items:center;gap:5px;width:100%;border:0;background:none;padding:1px 3px;border-radius:6px;font:inherit;font-size:12px;color:var(--ink);text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ev:hover{background:var(--soft)}
+.ev i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--teal)}
+.ev.k-reg i{background:var(--coral)} .ev.k-event i{background:var(--purple)}
+.ev.s-cancel,.ev.s-noshow{opacity:.5;text-decoration:line-through}
+.ev.bar{display:block;background:var(--teal);color:#fff;font-weight:700;padding:2px 6px}
+.ev.bar.k-event{background:var(--purple)} .ev.bar.k-reg{background:var(--coral)}
+.ev.bar:hover{filter:brightness(1.08);background:var(--teal)}
+.lg{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 3px 0 10px;background:var(--teal);vertical-align:0}
+.lg.k-reg{background:var(--coral)} .lg.k-event{background:var(--purple)}
+@media (max-width:600px){.evt{display:none}.mcal-d{min-height:78px;padding:2px 1px}.ev{font-size:10.5px;padding:0 1px;gap:2px}.ev i{width:6px;height:6px}.mcal-h{font-size:11px}}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 
@@ -283,7 +304,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
       <a href="#home" data-tab="home">總覽</a>
       <a href="#calendar" data-tab="calendar">年度行事曆</a>
       <a href="#cases" data-tab="cases">入托・退托・入職</a>
-      <a href="#visit" data-tab="visit">參觀預約</a>
+      <a href="#visit" data-tab="visit">行事曆・參觀</a>
       <a href="#opt" data-tab="opt">優化補助申請</a>
       <a href="#dis" data-tab="dis">身障補助申請</a>
       <a href="#fac" data-tab="fac">設施設備補助</a>
@@ -294,7 +315,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 17:16</div>
+<div class="ver" id="ver">版本 115/11/24 17:20</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -1706,11 +1727,11 @@ document.addEventListener('input',e=>{
   if(DIS.preview){ clearTimeout(DIS._pv); DIS._pv=setTimeout(renderDisPreview,500); }
 });
 
-/* ═════════ 參觀預約 ═════════ */
+/* ═════════ 參觀預約（月曆） ═════════ */
 const VSTAT={book:'已預約',came:'已參觀',enrol:'已報名',noshow:'沒來',cancel:'取消'};
+const VKIND={visit:'參觀',reg:'註冊',event:'其他行程'};
 const VSRC=['網路','朋友介紹','路過','電話詢問','社區活動','其他'];
-const VIS={edit:null, imp:null, kw:'參觀', showPast:false, confirm:null};
-function visitDT(v){ const d=parseDate(v.date); if(!d) return null; const [h,m]=(v.time||'00:00').split(':').map(Number); d.setHours(h||0,m||0); return d; }
+const VIS={edit:null, imp:null, kw:'', confirm:null, month:new Date(today.getFullYear(),today.getMonth(),1)};
 function saveVisit(v){
   const i=(S.visits||[]).findIndex(x=>x.id===v.id); if(i>=0) S.visits[i]=v; else S.visits.push(v);
   if(!db){ saveLocal(); return; }
@@ -1723,6 +1744,9 @@ function deleteVisit(id){
 }
 const newVid=()=>'v'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const childAge=b=>{ const d=parseDate(b); if(!d) return ''; let m=(today.getFullYear()-d.getFullYear())*12+(today.getMonth()-d.getMonth()); if(today.getDate()<d.getDate()) m--; return m<0?'未出生':m<24?`${m} 個月`:`${Math.floor(m/12)} 歲 ${m%12} 個月`; };
+const vKind=v=>v.kind||'visit';
+function tText(t){ if(!t) return ''; const [h,m]=t.split(':').map(Number); const ap=h<12?'上午':'下午', hh=h%12||12; return `${ap}${hh}點${m?m+'分':''}`; }
+function vLabel(v){ const k=vKind(v); if(k==='event') return v.title||v.parent||'行程'; return v.title||`${v.parent||''}${VKIND[k]}`; }
 
 /* ── 讀 Google 行事曆匯出的 .ics ── */
 function parseICS(text){
@@ -1738,7 +1762,7 @@ function parseICS(text){
     if(name==='DTSTART'){
       const m=val.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?/); if(!m) continue;
       let d; if(m[4]===undefined){ d=new Date(+m[1],+m[2]-1,+m[3]); cur.allDay=true; }
-      else if(m[7]) d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5])); // UTC → 本機時間
+      else if(m[7]) d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5]));
       else d=new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5]);
       cur.start=d;
     }
@@ -1747,115 +1771,136 @@ function parseICS(text){
     else if(name==='LOCATION') cur.loc=un(val);
     else if(name==='UID') cur.uid=val;
     else if(name==='STATUS') cur.status=val;
+    else if(name==='RECURRENCE-ID') cur.rec=val;
   }
   return evs.filter(e=>e.status!=='CANCELLED');
 }
-function guessFromText(t){
-  const phone=(t.match(/09\d{2}[-\s]?\d{3}[-\s]?\d{3}|0\d{1,2}[-\s]?\d{6,8}/)||[])[0]||'';
-  return {phone:phone.replace(/\s/g,'')};
+function fromGcal(e){
+  const t=e.title||'', txt=t+'\n'+(e.desc||'');
+  const kind=/參觀/.test(t)?'visit':/註冊|報名/.test(t)?'reg':'event';
+  const phone=((txt.match(/09\d{2}[-\s]?\d{3}[-\s]?\d{0,3}|0\d{1,2}-?\d{6,8}/)||[])[0]||'').replace(/[\s-]+$/,'').replace(/\s/g,'');
+  const parent=kind==='event'?'':t.replace(/參觀|註冊|報名|預約|[-－:：]/g,' ').replace(/09[\d\s-]+|0\d{1,2}-?\d{6,8}/g,' ').replace(/\s+/g,' ').trim();
+  const time=e.allDay?'':`${String(e.start.getHours()).padStart(2,'0')}:${String(e.start.getMinutes()).padStart(2,'0')}`;
+  return {kind, date:isoOf(e.start), time, title:t, parent, phone, child:'', birth:'', source:'',
+    status: kind==='visit'?(e.start<today?'came':'book'):kind==='reg'?'enrol':'', note:[e.desc,e.loc].filter(Boolean).join('\n'), gcal:(e.uid||'')+(e.rec?'@'+e.rec:'')};
 }
 async function visitImport(file){
   let evs; try{ evs=parseICS(await file.text()); }catch(e){ toast('這個檔案讀不到，請選 Google 行事曆匯出的 .ics 檔'); return; }
   if(!evs.length){ toast('檔案裡沒有找到行程'); return; }
   const have=new Set((S.visits||[]).map(v=>v.gcal).filter(Boolean));
-  VIS.imp=evs.sort((a,b)=>a.start-b.start).map((e,i)=>({i,e,dup:have.has(e.uid),pick:false}));
+  VIS.imp=evs.sort((a,b)=>a.start-b.start).map((e,i)=>{ const v=fromGcal(e); return {i,e,v,dup:have.has(v.gcal),pick:false}; });
   visitFilter(); render();
 }
 function visitFilter(){ if(!VIS.imp) return; const k=VIS.kw.trim(); VIS.imp.forEach(r=>{ r.pick=!r.dup&&(!k||((r.e.title||'')+(r.e.desc||'')).includes(k)); }); }
 function visitImportDo(){
-  let n=0;
-  VIS.imp.filter(r=>r.pick).forEach(r=>{ const e=r.e, txt=(e.title||'')+'\n'+(e.desc||'');
-    saveVisit({id:newVid(), date:isoOf(e.start), time:e.allDay?'':`${String(e.start.getHours()).padStart(2,'0')}:${String(e.start.getMinutes()).padStart(2,'0')}`,
-      parent:(e.title||'').replace(/參觀|預約|[:：]/g,' ').trim(), phone:guessFromText(txt).phone, child:'', birth:'', source:'', status:e.start<today?'came':'book',
-      note:[e.desc,e.loc].filter(Boolean).join('\n'), gcal:e.uid||'', created:new Date().toISOString()}); n++; });
-  VIS.imp=null; render(); toast(`已匯入 ${n} 筆參觀預約`);
+  let n=0; VIS.imp.filter(r=>r.pick).forEach(r=>{ saveVisit({...r.v,id:newVid(),created:new Date().toISOString()}); n++; });
+  const first=VIS.imp.find(r=>r.pick); VIS.imp=null;
+  if(first) VIS.month=new Date(first.e.start.getFullYear(),first.e.start.getMonth(),1);
+  render(); toast(`已匯入 ${n} 筆行程`);
 }
 
-/* ── 畫面 ── */
-function visitCard(v){
-  const dt=visitDT(v), past=dt&&dt<today, st=v.status||'book';
-  const chipCls={book:'due',came:'ok',enrol:'ok',noshow:'late',cancel:'when'}[st];
-  return `<div class="task ${st==='enrol'?'done':''}" style="gap:6px">
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <span class="num" style="font-weight:800;font-size:16px;min-width:46px">${esc(v.time||'—')}</span>
-      <b style="flex:1;min-width:120px">${esc(v.parent||'（未填姓名）')}${v.child?`<span class="muted" style="font-weight:500">・${esc(v.child)}</span>`:''}${v.birth?`<span class="muted" style="font-weight:500;font-size:13px">（${childAge(v.birth)}）</span>`:''}</b>
-      <span class="chip ${chipCls}">${VSTAT[st]}</span>
-      <button class="docbtn" data-act="v-edit" data-id="${esc(v.id)}">編輯</button>
-    </div>
-    ${v.phone?`<div class="tn" style="padding-left:56px;user-select:all">電話：${esc(v.phone)}</div>`:''}
-    ${v.source?`<div class="tn" style="padding-left:56px">來源：${esc(v.source)}</div>`:''}
-    ${v.note?`<div class="tn" style="padding-left:56px;white-space:pre-wrap">${esc(v.note)}</div>`:''}
-    ${(st==='book'&&past)||st==='came'?`<div style="display:flex;gap:6px;flex-wrap:wrap;padding-left:56px">${(st==='book'?['came','noshow']:['enrol']).map(k=>`<button class="docbtn" data-act="v-st" data-id="${esc(v.id)}" data-st="${k}">標成${VSTAT[k]}</button>`).join('')}</div>`:''}
+/* ── 月曆 ── */
+function monthGrid(){
+  const m0=VIS.month, y=m0.getFullYear(), mo=m0.getMonth();
+  const start=new Date(y,mo,1-m0.getDay()), days=[]; for(let i=0;i<42;i++) days.push(new Date(y,mo,1-m0.getDay()+i));
+  while(days.length>35&&days[days.length-7].getMonth()!==mo) days.splice(-7);
+  const byDate={}; (S.visits||[]).forEach(v=>{ (byDate[v.date]=byDate[v.date]||[]).push(v); });
+  const custom=d=>customOf(d.getMonth()+1,d.getFullYear()-1911).filter(t=>t.day===d.getDate());
+  const WKS=['週日','週一','週二','週三','週四','週五','週六'];
+  return `<div class="mcal" role="grid" aria-label="${y-1911} 年 ${mo+1} 月">
+    ${WKS.map(w=>`<div class="mcal-h">${w}</div>`).join('')}
+    ${days.map(d=>{ const iso=isoOf(d), out=d.getMonth()!==mo, isT=iso===isoOf(today);
+      const vs=(byDate[iso]||[]).slice().sort((a,b)=>(a.time?1:0)-(b.time?1:0)||(a.time||'').localeCompare(b.time||''));
+      const cs=custom(d);
+      return `<div class="mcal-d ${out?'mo':''}" data-act="v-day" data-date="${iso}">
+        <div class="mcal-n"><span class="${isT?'today':''}">${d.getDate()===1?`${d.getMonth()+1}月${d.getDate()}日`:d.getDate()}</span></div>
+        ${cs.map(t=>`<button class="ev bar" data-act="cu-edit" data-id="${esc(t.custom.id)}" title="${esc(t.title)}">${esc(t.title)}</button>`).join('')}
+        ${vs.map(v=>{ const k=vKind(v), st=v.status||''; return v.time
+          ? `<button class="ev k-${k} s-${st}" data-act="v-edit" data-id="${esc(v.id)}" title="${esc(tText(v.time)+' '+vLabel(v))}"><i></i><span class="evt">${tText(v.time)} </span>${esc(vLabel(v))}</button>`
+          : `<button class="ev bar k-${k}" data-act="v-edit" data-id="${esc(v.id)}" title="${esc(vLabel(v))}">${esc(vLabel(v))}</button>`; }).join('')}
+      </div>`; }).join('')}
   </div>`;
 }
-function groupByDate(list){ const g={}; list.forEach(v=>{ (g[v.date]=g[v.date]||[]).push(v); }); return Object.keys(g).sort().map(d=>[d,g[d].sort((a,b)=>(a.time||'').localeCompare(b.time||''))]); }
 function visitForm(){
   const v=VIS.edit; if(!v) return '';
+  const k=v.kind||'visit';
   return `<form class="card" id="v-form" style="display:flex;flex-direction:column;gap:12px">
-    <div class="sec-h" style="margin:0"><h2>${v.id?'編輯參觀預約':'新增參觀預約'}</h2></div>
+    <div class="sec-h" style="margin:0"><h2>${v.id?'編輯':'新增'}${VKIND[k]}</h2>
+      <div class="seg" role="group" aria-label="類型">${Object.entries(VKIND).map(([kk,l])=>`<button type="button" data-act="v-kind" data-k="${kk}" aria-pressed="${k===kk}">${l}</button>`).join('')}</div></div>
     <div class="calc-io" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
       <div class="field"><label for="v-date">日期</label><input id="v-date" type="date" required value="${esc(v.date||'')}"></div>
-      <div class="field"><label for="v-time">時間</label><input id="v-time" type="time" value="${esc(v.time||'')}"></div>
-      <div class="field"><label for="v-parent">家長姓名</label><input id="v-parent" required value="${esc(v.parent||'')}" placeholder="例：王媽媽"></div>
+      <div class="field"><label for="v-time">時間（空白＝整天）</label><input id="v-time" type="time" value="${esc(v.time||'')}"></div>
+      ${k==='event'?`<div class="field" style="grid-column:1/-1"><label for="v-title">行程名稱</label><input id="v-title" required value="${esc(v.title||'')}" placeholder="例：教保訪視、防災演練"></div>`
+      :`<div class="field"><label for="v-parent">家長姓名</label><input id="v-parent" required value="${esc(v.parent||'')}" placeholder="例：王媽媽"></div>
       <div class="field"><label for="v-phone">電話</label><input id="v-phone" type="tel" value="${esc(v.phone||'')}"></div>
       <div class="field"><label for="v-child">幼兒姓名</label><input id="v-child" value="${esc(v.child||'')}"></div>
       <div class="field"><label for="v-birth">幼兒生日（預產期也可以）</label><input id="v-birth" type="date" value="${esc(v.birth||'')}"></div>
       <div class="field"><label for="v-source">從哪裡知道我們</label><select id="v-source"><option value="">—</option>${VSRC.map(s=>`<option ${v.source===s?'selected':''}>${s}</option>`).join('')}</select></div>
-      <div class="field"><label for="v-status">狀態</label><select id="v-status">${Object.entries(VSTAT).map(([k,l])=>`<option value="${k}" ${(v.status||'book')===k?'selected':''}>${l}</option>`).join('')}</select></div>
-      <div class="field" style="grid-column:1/-1"><label for="v-note">備註</label><input id="v-note" value="${esc(v.note||'')}" placeholder="例：想了解延托、雙胞胎"></div>
+      <div class="field"><label for="v-status">狀態</label><select id="v-status">${Object.entries(VSTAT).map(([kk,l])=>`<option value="${kk}" ${(v.status||(k==='reg'?'enrol':'book'))===kk?'selected':''}>${l}</option>`).join('')}</select></div>`}
+      <div class="field" style="grid-column:1/-1"><label for="v-note">備註</label><input id="v-note" value="${esc(v.note||'')}" placeholder="${k==='event'?'':'例：想了解延托、雙胞胎'}"></div>
     </div>
+    ${v.birth?`<div class="muted" style="font-size:13px">幼兒現在 ${childAge(v.birth)}</div>`:''}
     <div class="row-actions" style="justify-content:flex-start">
-      <button class="btn" type="submit">${v.id?'儲存':'加入預約'}</button>
+      <button class="btn" type="submit">${v.id?'儲存':'加入行事曆'}</button>
       <button class="btn ghost" type="button" data-act="v-cancel">取消</button>
+      ${v.id&&k==='visit'&&(v.status||'book')==='book'?`<button class="btn ghost" type="button" data-act="v-st" data-id="${esc(v.id)}" data-st="came">標成已參觀</button>`:''}
+      ${v.id&&k==='visit'&&v.status==='came'?`<button class="btn ghost" type="button" data-act="v-st" data-id="${esc(v.id)}" data-st="enrol">標成已報名</button>`:''}
       ${v.id?(VIS.confirm===v.id?`<span style="align-self:center;font-weight:700">確定刪除？</span><button class="btn danger" type="button" data-act="v-delyes">刪除</button>`:`<button class="btn ghost" type="button" data-act="v-delask" style="margin-left:auto">刪除</button>`):''}
     </div></form>`;
 }
 function viewVisit(){
-  const all=S.visits||[], up=all.filter(v=>{ const d=parseDate(v.date); return d&&d>=today; }), past=all.filter(v=>{ const d=parseDate(v.date); return d&&d<today; });
-  const ym=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
-  const thisM=all.filter(v=>(v.date||'').startsWith(ym)), came=all.filter(v=>['came','enrol'].includes(v.status)), enrol=all.filter(v=>v.status==='enrol');
+  const all=S.visits||[], vis=all.filter(v=>vKind(v)==='visit');
+  const m0=VIS.month, ym=isoOf(m0).slice(0,7);
+  const thisM=vis.filter(v=>(v.date||'').startsWith(ym)), regM=all.filter(v=>vKind(v)==='reg'&&(v.date||'').startsWith(ym));
+  const came=vis.filter(v=>['came','enrol'].includes(v.status)), enrol=all.filter(v=>v.status==='enrol');
   const imp=VIS.imp?`<section class="card">
-    <div class="sec-h"><h2>從 Google 行事曆匯入</h2><span class="meta">找到 ${VIS.imp.length} 筆行程，勾選要匯入的</span></div>
-    <div class="form" style="margin:0 0 10px;padding:0;border:0"><div class="field" style="flex:1 1 200px"><label for="v-kw">只勾標題或內容有這個字的</label><input id="v-kw" value="${esc(VIS.kw)}" placeholder="例：參觀"></div>
+    <div class="sec-h"><h2>從 Google 行事曆匯入</h2><span class="meta">找到 ${VIS.imp.length} 筆行程</span></div>
+    <div class="form" style="margin:0 0 10px;padding:0;border:0"><div class="field" style="flex:1 1 200px"><label for="v-kw">只匯入有這個字的（空白＝全部）</label><input id="v-kw" value="${esc(VIS.kw)}" placeholder="例：參觀"></div>
       <button class="btn" data-act="v-impdo">匯入 ${VIS.imp.filter(r=>r.pick).length} 筆</button><button class="btn ghost" data-act="v-impcancel">取消</button></div>
-    <div class="tblwrap" style="max-height:360px;overflow:auto"><table class="ptbl"><thead><tr><th></th><th>日期</th><th>時間</th><th>標題</th><th>內容</th></tr></thead><tbody>
-    ${VIS.imp.map(r=>`<tr class="${r.dup?'off':''}"><td><input type="checkbox" id="vi-${r.i}" data-vi="${r.i}" ${r.pick?'checked':''} ${r.dup?'disabled':''} aria-label="匯入這筆"></td><td class="num">${rocShort(isoOf(r.e.start))}</td><td class="num">${r.e.allDay?'整天':`${String(r.e.start.getHours()).padStart(2,'0')}:${String(r.e.start.getMinutes()).padStart(2,'0')}`}</td><td>${esc(r.e.title||'')}${r.dup?'（已匯入過）':''}</td><td style="white-space:normal;max-width:320px">${esc((r.e.desc||'').slice(0,80))}</td></tr>`).join('')}
+    <div class="tblwrap" style="max-height:360px;overflow:auto"><table class="ptbl"><thead><tr><th></th><th>日期</th><th>時間</th><th>標題</th><th>判斷成</th></tr></thead><tbody>
+    ${VIS.imp.map(r=>`<tr class="${r.dup?'off':''}"><td><input type="checkbox" id="vi-${r.i}" data-vi="${r.i}" ${r.pick?'checked':''} ${r.dup?'disabled':''} aria-label="匯入這筆"></td><td class="num">${rocShort(r.v.date)}</td><td>${r.v.time?tText(r.v.time):'整天'}</td><td style="white-space:normal">${esc(r.e.title||'')}${r.dup?'（已匯入過）':''}</td><td>${VKIND[r.v.kind]}${r.v.parent?`・${esc(r.v.parent)}`:''}</td></tr>`).join('')}
     </tbody></table></div></section>`:'';
   return `<section class="card">
-    <div class="eyebrow">家長參觀</div>
-    <div class="sec-h"><h2>參觀預約</h2><span class="meta">本月 ${thisM.length} 組・累計參觀 ${came.length} 組・報名 ${enrol.length} 組${came.length?`（${Math.round(enrol.length/came.length*100)}%）`:''}</span></div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn" data-act="v-new">＋ 新增預約</button>
-      <label class="btn ghost" style="cursor:pointer">匯入 Google 行事曆<input id="v-ics" type="file" accept=".ics,text/calendar" hidden></label>
+    <div class="mcal-top">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <button class="btn ghost sm" data-act="v-today">今天</button>
+        <button class="x" data-act="v-prev" aria-label="上個月">‹</button><button class="x" data-act="v-next" aria-label="下個月">›</button>
+        <h2 style="font-size:22px;font-weight:900;margin-left:6px">${m0.getFullYear()-1911} 年 ${m0.getMonth()+1} 月</h2>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span class="muted" style="font-size:13px">本月參觀 ${thisM.length} 組・註冊 ${regM.length} 位・累計參觀後報名 ${enrol.length}/${came.length||0}</span>
+        <button class="btn sm" data-act="v-new">＋ 新增</button>
+        <label class="btn ghost sm" style="cursor:pointer">匯入 Google 行事曆<input id="v-ics" type="file" accept=".ics,text/calendar" hidden></label>
+      </div>
     </div>
+    <p class="muted" style="font-size:12.5px;margin:0 0 8px">點空白的日子就能在那天新增；點行程可以編輯。<span class="lg k-visit"></span>參觀 <span class="lg k-reg"></span>註冊 <span class="lg k-event"></span>其他</p>
+    ${monthGrid()}
     <details style="margin-top:10px"><summary class="muted" style="cursor:pointer;font-size:13.5px">怎麼從 Google 行事曆匯出？</summary>
-      <ol style="font-size:13.5px;margin:8px 0 0;padding-left:20px;line-height:1.8"><li>用電腦打開 Google 日曆，右上角 ⚙️ → <b>設定</b>。</li><li>左邊點放參觀預約的那個日曆名稱 → <b>整合日曆</b>…或左邊 <b>匯入與匯出</b> → <b>匯出</b>，會下載一個 .zip。</li><li>解壓縮後裡面是 <b>.ics</b> 檔，回到這裡按「匯入 Google 行事曆」選那個檔。</li><li>系統會列出所有行程，預設只勾標題有「參觀」的，確認後按匯入。重複匯入不會重複新增。</li></ol></details>
+      <ol style="font-size:13.5px;margin:8px 0 0;padding-left:20px;line-height:1.8"><li>用電腦打開 Google 日曆，右上角 ⚙️ → <b>設定</b> → 左邊 <b>匯入與匯出</b> → <b>匯出</b>，會下載一個 .zip。</li><li>解壓縮後裡面是 <b>.ics</b> 檔，回到這裡按「匯入 Google 行事曆」選那個檔。</li><li>預設全部匯入：標題有「參觀」算參觀、有「註冊」算註冊，其他是一般行程。重複匯入不會重複新增。</li></ol></details>
   </section>
-  ${imp}${visitForm()}
-  <section><div class="sec-h"><h2>接下來的參觀</h2><span class="meta">${up.length} 組</span></div>
-    ${up.length?groupByDate(up).map(([d,vs])=>`<div style="margin-bottom:14px"><div style="font-weight:900;margin-bottom:6px">${rocDate(parseDate(d))}${d===isoOf(today)?'・今天':''}</div><div class="grid2">${vs.map(visitCard).join('')}</div></div>`).join('')
-      :`<div class="empty">${CH.ding}<span>目前沒有排定的參觀。按「＋ 新增預約」或從 Google 行事曆匯入。</span></div>`}
-  </section>
-  ${past.length?`<details ${VIS.showPast?'open':''} id="v-past"><summary style="cursor:pointer;font-weight:700">過去的參觀（${past.length}）</summary><div style="margin-top:12px">
-    ${groupByDate(past).reverse().map(([d,vs])=>`<div style="margin-bottom:14px"><div style="font-weight:900;margin-bottom:6px">${rocDate(parseDate(d))}</div><div class="grid2">${vs.map(visitCard).join('')}</div></div>`).join('')}</div></details>`:''}`;
+  ${imp}${visitForm()}${customForm()}`;
 }
 function visitHomeCard(){
   const wk=new Date(today.getTime()+7*864e5);
-  const up=(S.visits||[]).filter(v=>{ const d=parseDate(v.date); return d&&d>=today&&d<wk&&v.status!=='cancel'; });
+  const up=(S.visits||[]).filter(v=>{ const d=parseDate(v.date); return d&&d>=today&&d<wk&&v.status!=='cancel'; }).sort((a,b)=>(a.date+(a.time||'')).localeCompare(b.date+(b.time||'')));
   if(!up.length) return '';
-  return `<section><div class="sec-h"><h2>這 7 天的參觀</h2><a class="meta" href="#visit">全部參觀預約</a></div>
-    ${groupByDate(up).map(([d,vs])=>`<div style="margin-bottom:10px"><div style="font-weight:900;margin-bottom:6px">${rocDate(parseDate(d))}${d===isoOf(today)?'・今天':''}</div><div class="grid2">${vs.map(visitCard).join('')}</div></div>`).join('')}</section>`;
+  return `<section><div class="sec-h"><h2>這 7 天的行程</h2><a class="meta" href="#visit">看整個月</a></div>
+    <div class="card" style="padding:10px 14px;display:flex;flex-direction:column;gap:6px">${up.map(v=>`<button class="ev k-${vKind(v)}" style="font-size:14px" data-act="v-edit" data-id="${esc(v.id)}"><i></i><b style="min-width:110px;display:inline-block">${rocDate(parseDate(v.date)).replace(/^\d+\//,'')}${v.date===isoOf(today)?'・今天':''}</b> ${v.time?tText(v.time):'整天'} ${esc(vLabel(v))}${v.phone?`・${esc(v.phone)}`:''}</button>`).join('')}</div></section>`;
 }
 
 /* ── 互動 ── */
 document.addEventListener('click',e=>{
   const el=e.target.closest('[data-act^="v-"]'); if(!el) return; const a=el.dataset.act;
-  if(a==='v-new'){ VIS.edit={date:isoOf(today),time:'10:00',status:'book'}; VIS.confirm=null; render(); const f=$('v-parent'); if(f){ f.focus(); f.scrollIntoView({block:'center'}); } }
-  else if(a==='v-edit'){ const v=S.visits.find(x=>x.id===el.dataset.id); if(v){ VIS.edit={...v}; VIS.confirm=null; if(S.tab!=='visit'){ location.hash='visit'; } render(); const f=$('v-form'); if(f) f.scrollIntoView({block:'center'}); } }
+  if(a==='v-day'){ if(e.target.closest('.ev')) return; VIS.edit={date:el.dataset.date,time:'10:00',kind:'visit',status:'book'}; VIS.confirm=null; render(); const f=$('v-form'); if(f) f.scrollIntoView({block:'center'}); const n=$('v-parent'); if(n) n.focus({preventScroll:true}); return; }
+  if(a==='v-new'){ VIS.edit={date:isoOf(today),time:'10:00',kind:'visit',status:'book'}; VIS.confirm=null; render(); const f=$('v-form'); if(f) f.scrollIntoView({block:'center'}); }
+  else if(a==='v-kind'){ const cur=VIS.edit; ['date','time','parent','phone','child','birth','note','title'].forEach(k=>{ const i=$('v-'+k); if(i) cur[k]=i.value; }); cur.kind=el.dataset.k; if(cur.kind==='reg'&&(!cur.status||cur.status==='book')) cur.status='enrol'; render(); }
+  else if(a==='v-edit'){ const v=S.visits.find(x=>x.id===el.dataset.id); if(v){ VIS.edit={...v}; VIS.confirm=null; if(S.tab!=='visit') location.hash='visit'; setTimeout(()=>{ render(); const f=$('v-form'); if(f) f.scrollIntoView({block:'center'}); },0); } }
   else if(a==='v-cancel'){ VIS.edit=null; render(); }
   else if(a==='v-delask'){ VIS.confirm=VIS.edit.id; render(); }
-  else if(a==='v-delyes'){ const n=VIS.edit.parent; deleteVisit(VIS.edit.id); VIS.edit=null; VIS.confirm=null; render(); toast(`已刪除「${n}」的預約`); }
-  else if(a==='v-st'){ const v=S.visits.find(x=>x.id===el.dataset.id); if(v){ saveVisit({...v,status:el.dataset.st}); render(); toast(`已標成${VSTAT[el.dataset.st]}`); } }
+  else if(a==='v-delyes'){ const n=vLabel(VIS.edit); deleteVisit(VIS.edit.id); VIS.edit=null; VIS.confirm=null; render(); toast(`已刪除「${n}」`); }
+  else if(a==='v-st'){ const v=S.visits.find(x=>x.id===el.dataset.id); if(v){ saveVisit({...v,status:el.dataset.st}); VIS.edit=null; render(); toast(`已標成${VSTAT[el.dataset.st]}`); } }
+  else if(a==='v-prev'||a==='v-next'){ VIS.month=new Date(VIS.month.getFullYear(),VIS.month.getMonth()+(a==='v-prev'?-1:1),1); render(); }
+  else if(a==='v-today'){ VIS.month=new Date(today.getFullYear(),today.getMonth(),1); render(); }
   else if(a==='v-impdo'){ visitImportDo(); }
   else if(a==='v-impcancel'){ VIS.imp=null; render(); }
 });
@@ -1867,11 +1912,14 @@ document.addEventListener('change',e=>{
 document.addEventListener('input',e=>{ if(e.target.id==='v-kw'){ VIS.kw=e.target.value; visitFilter(); clearTimeout(VIS._t); VIS._t=setTimeout(()=>softRender(),400); } });
 document.addEventListener('submit',e=>{
   if(e.target.id!=='v-form') return; e.preventDefault();
-  const g=id=>$(id).value.trim();
-  if(!g('v-date')||!g('v-parent')) return;
-  const v={...VIS.edit,date:g('v-date'),time:g('v-time'),parent:g('v-parent'),phone:g('v-phone'),child:g('v-child'),birth:g('v-birth'),source:g('v-source'),status:g('v-status'),note:g('v-note')};
+  const g=id=>{ const i=$(id); return i?i.value.trim():''; };
+  const k=VIS.edit.kind||'visit';
+  if(!g('v-date')||(k==='event'?!g('v-title'):!g('v-parent'))) return;
+  const v={...VIS.edit,kind:k,date:g('v-date'),time:g('v-time'),note:g('v-note')};
+  if(k==='event'){ v.title=g('v-title'); }
+  else { Object.assign(v,{parent:g('v-parent'),phone:g('v-phone'),child:g('v-child'),birth:g('v-birth'),source:g('v-source'),status:g('v-status')}); if(v.parent!==VIS.edit.parent||!v.gcal) v.title=''; }
   const isNew=!v.id; if(isNew){ v.id=newVid(); v.created=new Date().toISOString(); }
-  saveVisit(v); VIS.edit=null; render(); toast(isNew?`已加入 ${v.parent} 的參觀預約`:'已儲存');
+  saveVisit(v); VIS.edit=null; render(); toast(isNew?`已加入：${vLabel(v)}`:'已儲存');
 });
 
 /* ═════════ 設施設備及營運補助（提升托育服務品質獎助） ═════════ */
