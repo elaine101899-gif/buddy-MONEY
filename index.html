@@ -309,6 +309,8 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 .agn{flex:1;min-width:0;display:flex;flex-direction:column;font-size:15px;line-height:1.35}
 .agn b{font-weight:700;overflow-wrap:anywhere}.agn .muted{font-size:12.5px}
 @media (max-width:640px){.mcal .ev{display:none}.dots{display:flex}.mcal-d{min-height:54px}}
+#printarea{display:none}
+@media print{@page{size:A4;margin:0}body>*:not(#printarea){display:none!important}body{background:#fff!important}#printarea{display:block}#printarea .pg{box-shadow:none}body::before{display:none}}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 
@@ -330,6 +332,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
       <a href="#opt" data-tab="opt">優化補助申請</a>
       <a href="#dis" data-tab="dis">身障補助申請</a>
       <a href="#fac" data-tab="fac">設施設備補助</a>
+      <a href="#care" data-tab="care">托兒措施補助</a>
       <a href="#calc" data-tab="calc">補助試算</a>
     </nav>
   </div>
@@ -337,7 +340,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 18:40</div>
+<div class="ver" id="ver">版本 115/11/24 18:52</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -381,6 +384,14 @@ TASKS.push(
   {id:'settle-11',m:11,title:'設施設備及營運核銷表申請',note:'本次申請第二期金額（總和×30%）；營運費可以勻支設施設備',docs:SETTLE_DOCS,calc:'p2',cat:'核銷'},
   {id:'drill-11',m:11,title:'消防演練',cat:'安全'},
   {id:'labor-12',m:12,title:'勞資會議',cat:'會議'}
+);
+if(CENTER_ID==='xbd') TASKS.push(
+  {id:'care-apply',m:1,title:'托兒措施補助申請',note:'下載申請名冊（Excel）送件',care:'apply',cat:'托兒'},
+  {id:'care-pay-3',m:3,title:'發放育兒津貼（4–6 月）',note:'印出印領清冊給老師簽名',care:2,cat:'托兒'},
+  {id:'care-pay-6',m:6,title:'發放育兒津貼（7–9 月）',note:'印出印領清冊給老師簽名',care:3,cat:'托兒'},
+  {id:'care-pay-9',m:9,title:'發放育兒津貼（10–12 月）',note:'印出印領清冊給老師簽名',care:4,cat:'托兒'},
+  {id:'care-pay-12',m:12,title:'發放育兒津貼（隔年 1–3 月）',note:'印出印領清冊給老師簽名',care:1,cat:'托兒'},
+  {id:'care-settle',m:10,title:'托兒措施補助核銷',note:'上傳老師簽名的印領清冊（掃描）＋存摺',care:'settle',cat:'托兒'}
 );
 const tasksOf = m => TASKS.filter(t=>t.m===m);
 /* 事項在成立後才要做：季報類看「申報的那一季」有沒有在成立後，其他看當月 */
@@ -491,7 +502,7 @@ function saveLocal(){ lsSet(localKey(), JSON.stringify({checks:S.checks,cases:S.
 function subscribe(){
   unsubs.forEach(u=>{try{u()}catch(e){}}); unsubs=[];
   S.checks={}; S.yearExists={}; S.cases=[]; S.custom=[]; S.visits=[]; S.settings={...DEFAULT_SETTINGS};
-  if(!db){ loadLocal(); setMode('local'); optSubscribe(); profSubscribe(); disSubscribe(); facSubscribe(); DIS.prevKids=undefined; render(); return; }
+  if(!db){ loadLocal(); setMode('local'); optSubscribe(); profSubscribe(); disSubscribe(); facSubscribe(); careSubscribe(); DIS.prevKids=undefined; render(); return; }
   setMode('loading'); render();
   clearTimeout(loadTimer);
   loadTimer=setTimeout(()=>{ if(S.mode==='loading') setMode('slow'); },10000);
@@ -514,7 +525,7 @@ function subscribe(){
     if(S.center!==c) return;
     S.cases=s.docs.map(d=>({id:d.id,...d.data()})); done(s); softRender();
   },err));
-  optSubscribe(); profSubscribe(); disSubscribe(); facSubscribe(); DIS.prevKids=undefined;
+  optSubscribe(); profSubscribe(); disSubscribe(); facSubscribe(); careSubscribe(); DIS.prevKids=undefined;
   unsubs.push(db.doc(`${base()}/settings/main`).onSnapshot(s=>{
     if(S.center!==c) return;
     S.settings={...DEFAULT_SETTINGS,...(s.data()||{})}; S.settings.dis=(S.settings.dis||[]).filter(Boolean); done(s);
@@ -601,6 +612,7 @@ function taskHTML(t,y,showWhen){
   const g=grant();
   if(t.calc==='p1'||t.calc==='p2') calc=`<div class="calcline"><a href="#fac" data-act="gofac" data-y="${y}" data-s="${t.calc==='p1'?1:2}">填寫${t.calc==='p1'?'第一期申請':'第二期核銷'}、產生 PDF →</a></div>`;
   if(t.id.startsWith('opt-')){ const q=t.m===1?4:(t.m-1)/3, yy=t.m===1?y-1:y; calc=`<div class="calcline"><a href="#opt" data-act="goopt" data-y="${yy}" data-q="${q}">填寫申請表、產生 PDF →</a></div>`; }
+  if(t.care){ const cy=t.care===1?y+1:y; calc=`<div class="calcline"><a href="#care" data-act="gocare" data-y="${cy}" data-q="${typeof t.care==='number'?t.care:''}">${typeof t.care==='number'?'列印印領清冊 →':t.care==='apply'?'下載申請名冊 →':'上傳核銷檔案 →'}</a></div>`; }
   if(t.id.startsWith('dis-')){ const q=t.m===1?4:(t.m-1)/3, yy=t.m===1?y-1:y; calc=`<div class="calcline"><a href="#dis" data-act="godis" data-y="${yy}" data-q="${q}">填寫名冊、產生 PDF →</a></div>`; }
   if(false) calc = disTotal() ? `<div class="calcline">目前試算：<span class="num">$${money(disTotal())}</span>（<a href="#calc">試算</a>）</div>` : '';
   return `<div class="task ${done?'done':''}">
@@ -810,9 +822,10 @@ function render(){
   $('brandName').textContent=cn.name+' 托育補助小幫手';
   $('headMascot').innerHTML=CH[cn.mascot];
   document.querySelectorAll('nav a').forEach(a=>a.setAttribute('aria-current',a.dataset.tab===S.tab?'page':'false'));
-  const v={home:viewHome,calendar:viewCalendar,cases:viewCases,calc:viewCalc,opt:viewOpt,dis:viewDis,visit:viewVisit,fac:viewFac}[S.tab]||viewHome;
+  const v={home:viewHome,calendar:viewCalendar,cases:viewCases,calc:viewCalc,opt:viewOpt,dis:viewDis,visit:viewVisit,fac:viewFac,care:viewCare}[S.tab]||viewHome;
   $('main').innerHTML=v();
   if(S.tab==='calc') renderCalcOut();
+  { const ct=document.querySelector('nav a[data-tab="care"]'); if(ct) ct.hidden=!CARE_ON; }
   if(S.tab==='fac'){ renderFacOut(); if(FAC.preview) renderFacPreview(); if(db&&OPT.assets===undefined) getAssets(); }
   if(S.tab==='dis'){ if(DIS.preview) renderDisPreview(); if(DIS.prevKids===undefined){ DIS.prevKids=null; disLoadPrev(); } if(db&&OPT.assets===undefined) getAssets(); }
   if(S.tab==='opt'){ if(OPT.preview) renderPreview(); if(db&&OPT.assets===undefined) getAssets().then(()=>{ if(S.tab==='opt') softRender(); }); }
@@ -2252,6 +2265,224 @@ document.addEventListener('input',e=>{
   if(FAC.preview){ clearTimeout(FAC._pv); FAC._pv=setTimeout(renderFacPreview,500); }
 });
 
+/* ═════════ 托兒措施補助（雇主補助受僱者子女育兒補貼） ═════════ */
+const CARE_ON = CENTER_ID==='xbd';
+const CARE_RATE=2000, CARE_DIS=2000;              // 每位子女每月 2,000；領有身障手冊每月再加 2,000（員工育兒補助發放辦法）
+const CARE_SEED={};   // 名單不寫在程式碼裡（個資），用「從 Excel 匯入名單」或手動新增
+const CARE_SLOTS=[{k:'signed',label:'已簽名的印領清冊（掃描）'},{k:'bank',label:'存摺（封面及匯款紀錄）'},{k:'other',label:'其他附件'}];
+const CARE_APPLY_SLOTS=[{k:'apply',label:'申請送件資料（送出後的檔案、回執）'}];
+/* 發放批次：3 月發 4–6 月、6 月發 7–9 月、9 月發 10–12 月、12 月發隔年 1–3 月 */
+function careNextBatch(){ let y=ROC_NOW, q=Math.ceil(M_NOW/3)+1; if(q>4){q=1;y++;} return [y,q]; }
+const payMonthOf=(y,q)=>q===1?[y-1,12]:[y,q*3-3];
+const CARE={ d:null, unsub:null, y:careNextBatch()[0], q:careNextBatch()[1], ky:M_NOW>=11?ROC_NOW+1:ROC_NOW, local:{}, busy:'', confirm:null };
+const carePath=()=>`${base()}/care/main`;
+function careNorm(d){ d=d||{}; return {list:(d.list||[]).filter(Boolean), batches:d.batches||{}, years:d.years||{}, seeded:!!d.seeded}; }
+function careSubscribe(){
+  if(CARE.unsub){ try{CARE.unsub()}catch(e){} CARE.unsub=null; }
+  CARE.d=null; if(!CARE_ON) return;
+  const seed=()=>({list:JSON.parse(JSON.stringify(CARE_SEED[S.center]||[])),batches:{},years:{},seeded:true});
+  if(!db){ let o=null; try{ o=JSON.parse(lsGet(`local:${S.center}:care`)||'null'); }catch(e){} CARE.d=o?careNorm(o):seed(); return; }
+  const c=S.center;
+  CARE.unsub=db.doc(carePath()).onSnapshot(s=>{ if(S.center!==c) return; CARE.d=s.exists?careNorm(JSON.parse(JSON.stringify(s.data()))):seed(); if(S.tab==='care') softRender(); },()=>{ CARE.d=CARE.d||seed(); });
+}
+let careTimer=null;
+function saveCare(){ if(!db){ lsSet(`local:${S.center}:care`,JSON.stringify(CARE.d)); return; } clearTimeout(careTimer); const path=carePath(), body=JSON.parse(JSON.stringify(CARE.d)); careTimer=setTimeout(()=>enqueue(path,()=>db.doc(path).set(body)),600); }
+const bKey=()=>`${CARE.y}-q${CARE.q}`;
+const batch=()=>{ const b=CARE.d.batches[bKey()]=CARE.d.batches[bKey()]||{}; b.amt=b.amt||{}; b.skip=b.skip||{}; return b; };
+function careMonths(r,y,q){ // 這一季符合資格的月份
+  const out=[]; for(let m=q*3-2;m<=q*3;m++){ const ym=`${y+1911}-${String(m).padStart(2,'0')}`; if(r.from&&ym<r.from) continue; if(r.to&&ym>r.to) continue; out.push(m); } return out;
+}
+const careDefaultAmt=(r,y,q)=>careMonths(r,y,q).length*(CARE_RATE+(r.dis?CARE_DIS:0));
+function batchRows(){ const b=batch(); return CARE.d.list.map(r=>{ const ms=careMonths(r,CARE.y,CARE.q); const def=careDefaultAmt(r,CARE.y,CARE.q);
+  const amt=b.amt[r.id]!==undefined&&b.amt[r.id]!==''?n0(b.amt[r.id]):def; return {r,ms,def,amt,skip:b.skip[r.id]!==undefined?!!b.skip[r.id]:!ms.length}; }); }
+const qRange=q=>`${q*3-2}-${q*3}月`;
+
+/* ── 畫面 ── */
+function viewCare(){
+  const head=`<section class="card"><div class="eyebrow">雇主補助受僱者子女育兒補貼</div>
+    <div class="sec-h"><h2>托兒措施補助</h2><span class="meta">1 月申請・每季發放・10 月核銷</span></div>
+    <div class="tip">每位子女每月 ${money(CARE_RATE)} 元（一季 ${money(CARE_RATE*3)} 元）；子女領有身障手冊每月再加 ${money(CARE_DIS)} 元。<br>發放：3 月發 4–6 月、6 月發 7–9 月、9 月發 10–12 月、12 月發隔年 1–3 月。</div></section>`;
+  if(!CARE_ON) return head+`<div class="empty">${CH.ding}<span>這間中心目前沒有辦托兒措施補助。</span></div>`;
+  const d=CARE.d; if(!d) return head+`<div class="empty">${CH.ding}<span>讀取中…</span></div>`;
+  const rows=batchRows(), b=batch(), [py,pm]=payMonthOf(CARE.y,CARE.q), on=rows.filter(x=>!x.skip), total=on.reduce((a,x)=>a+x.amt,0);
+  const qs=[]; for(let y=ROC_NOW-1;y<=ROC_NOW+1;y++) for(let q=1;q<=4;q++) if(new Date(y+1911,q*3-1,1)>=new Date(2026,5,1)) qs.push([y,q]);
+  const canPrint=/github\.io$/.test(location.hostname)||location.protocol==='file:';
+  const pay=`<section class="card">
+    <div class="sec-h"><h2>1. 每季發放・印領清冊</h2><span class="meta">${py} 年 ${pm} 月發放</span></div>
+    <div class="form" style="margin-top:0;padding-top:0;border-top:0">
+      <div class="field"><label for="c-b">發放哪一季</label><select id="c-b">${qs.map(([y,q])=>{ const [a,m]=payMonthOf(y,q); return `<option value="${y}-${q}" ${y===CARE.y&&q===CARE.q?'selected':''}>${y} 年 ${qRange(q)}（${a} 年 ${m} 月發）</option>`; }).join('')}</select></div>
+      <div class="field"><label for="c-date">請領日期</label><input id="c-date" type="date" data-cb="date" value="${esc(b.date||isoOf(new Date(py+1911,pm-1,25)))}"></div>
+      ${canPrint?`<button class="btn" data-act="c-print">列印印領清冊</button>`:''}
+      <button class="btn ${canPrint?'ghost':''}" data-act="c-pdf" ${CARE.busy?'disabled':''}>${CARE.busy||'下載印領清冊 PDF'}</button>
+    </div>
+    <div class="tblwrap"><table class="ptbl"><thead><tr><th>發放</th><th>受僱者</th><th>子女</th><th>符合月份</th><th>補貼金額</th><th></th></tr></thead><tbody>
+    ${rows.map(x=>`<tr class="${x.skip?'off':''}"><td><input type="checkbox" id="c-on-${esc(x.r.id)}" data-con="${esc(x.r.id)}" ${x.skip?'':'checked'} aria-label="這季發放"></td>
+      <td>${esc(x.r.emp)}</td><td>${esc(x.r.kid)}${x.r.dis?' <span class="chip when">身障</span>':''}</td><td>${x.ms.length?x.ms.join('、')+' 月':'<span class="muted">不在期間內</span>'}</td>
+      <td><input type="number" class="num" id="c-amt-${esc(x.r.id)}" data-camt="${esc(x.r.id)}" value="${b.amt[x.r.id]!==undefined&&b.amt[x.r.id]!==''?b.amt[x.r.id]:''}" placeholder="${x.def}" style="width:90px"></td>
+      <td class="muted" style="font-size:12px">${x.amt!==x.def?'已手動改':''}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="out"><div><span class="k">發放人數</span><span class="v">${on.length} 位</span></div><div class="hl"><span class="k"><b>本季合計</b></span><span class="v">$${money(total)}</span></div></div>
+  </section>`;
+  const list=`<section class="card">
+    <div class="sec-h"><h2>2. 員工子女名單</h2><span class="meta">1 月申請用的名冊也是這份</span></div>
+    <div class="tblwrap"><table class="ptbl"><thead><tr><th>受僱者</th><th>電話</th><th>性別</th><th>子女</th><th>性別</th><th>年齡</th><th>身障手冊</th><th>開始月份</th><th>停止月份</th><th>備註</th><th></th></tr></thead><tbody>
+    ${d.list.length?'':`<tr><td colspan="11" class="muted" style="text-align:left;padding:10px">還沒有名單。按下面「從 Excel 匯入名單」選托兒措施的申請名冊 Excel，或按「＋ 新增一位」。</td></tr>`}
+    ${d.list.map((r,i)=>`<tr>
+      <td><input id="cl-emp-${i}" data-cl="emp" data-i="${i}" value="${esc(r.emp)}" style="width:70px"></td>
+      <td><input id="cl-phone-${i}" data-cl="phone" data-i="${i}" value="${esc(r.phone)}" style="width:110px"></td>
+      <td><select id="cl-esex-${i}" data-cl="esex" data-i="${i}">${['女','男'].map(v=>`<option ${r.esex===v?'selected':''}>${v}</option>`).join('')}</select></td>
+      <td><input id="cl-kid-${i}" data-cl="kid" data-i="${i}" value="${esc(r.kid)}" style="width:70px"></td>
+      <td><select id="cl-ksex-${i}" data-cl="ksex" data-i="${i}">${['男','女'].map(v=>`<option ${r.ksex===v?'selected':''}>${v}</option>`).join('')}</select></td>
+      <td><input type="number" id="cl-age-${i}" data-cl="age" data-i="${i}" value="${esc(r.age)}" style="width:50px"></td>
+      <td><input type="checkbox" id="cl-dis-${i}" data-cl="dis" data-i="${i}" ${r.dis?'checked':''} aria-label="領有身障手冊"></td>
+      <td><input type="month" id="cl-from-${i}" data-cl="from" data-i="${i}" value="${esc(r.from)}"></td>
+      <td><input type="month" id="cl-to-${i}" data-cl="to" data-i="${i}" value="${esc(r.to)}" title="離職或退托的月份；空白＝持續"></td>
+      <td><input id="cl-note-${i}" data-cl="note" data-i="${i}" value="${esc(r.note)}" style="width:150px"></td>
+      <td>${CARE.confirm===r.id?`<button class="docbtn" data-act="c-delyes" data-i="${i}">確定刪除</button>`:`<button class="x" data-act="c-del" data-id="${esc(r.id)}" aria-label="刪除" style="width:28px;height:28px">×</button>`}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap"><button class="docbtn" data-act="c-add">＋ 新增一位</button><label class="docbtn" style="cursor:pointer">從 Excel 匯入名單<input type="file" id="c-xin" accept=".xls,.xlsx" hidden></label><span class="muted" style="font-size:12.5px">離職、退托就填「停止月份」，之後的季別自動不發。</span></div>
+  </section>`;
+  const yrs=[ROC_NOW,ROC_NOW+1], Y=d.years[CARE.ky]=d.years[CARE.ky]||{files:{},applied:false};
+  const slotUI=(s,pre)=>{ const fs=[...((Y.files||{})[s.k]||[]),...(CARE.local[CARE.ky+':'+s.k]||[])]; return `<div class="task ${fs.length?'done':''}" style="gap:4px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="chip ${fs.length?'ok':'due'}">${fs.length?`${fs.length} 個檔`:'未上傳'}</span><b style="flex:1;min-width:160px">${s.label}</b>
+      <label class="docbtn" style="cursor:pointer">＋ 選檔案<input type="file" multiple accept="application/pdf,image/*" data-cslot="${s.k}" id="c-file-${s.k}" hidden></label></div>
+      ${fs.length?`<ul class="docs" style="padding-left:0">${fs.map((f,i)=>`<li style="display:flex;gap:8px;align-items:center;font-size:13.5px"><span style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(f.name)}${f.local?'（只在這台）':''}</span><button class="docbtn" data-act="c-rmfile" data-k="${s.k}" data-i="${f.local?i-(((Y.files||{})[s.k]||[]).length):i}" data-local="${f.local?1:''}">移除</button></li>`).join('')}</ul>`:''}</div>`; };
+  const yearSec=`<section class="card">
+    <div class="sec-h"><h2>3. 年度申請與核銷</h2><div class="field" style="flex-direction:row;align-items:center;gap:8px"><label for="c-ky">年度</label><select id="c-ky">${yrs.map(y=>`<option value="${y}" ${y===CARE.ky?'selected':''}>${y} 年</option>`).join('')}</select></div></div>
+    <div class="grid2">
+      <div class="task" style="gap:8px"><b>1 月・申請</b>
+        <span class="muted" style="font-size:13px">下載申請名冊（Excel，照勞動部範本的欄位），名單就是上面的員工子女名單。</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="c-xlsx">下載 ${CARE.ky} 年申請名冊</button></div>
+        ${CARE_APPLY_SLOTS.map(slotUI).join('')}</div>
+      <div class="task" style="gap:8px"><b>10 月・核銷</b>
+        <span class="muted" style="font-size:13px">老師簽完名的印領清冊掃描上傳，加上存摺，可以合成一份 PDF。</span>
+        ${CARE_SLOTS.map(slotUI).join('')}
+        <div><button class="btn sm" data-act="c-settle" ${CARE.busy?'disabled':''}>下載 ${CARE.ky} 年核銷 PDF</button></div></div>
+    </div></section>`;
+  return head+pay+list+yearSec;
+}
+
+/* ── 印領清冊頁面 ── */
+function pageCare(){
+  const p=OPT.profile, b=batch(), on=batchRows().filter(x=>!x.skip), [ry,rm,rd]=rocParts(b.date||isoOf(new Date(payMonthOf(CARE.y,CARE.q)[0]+1911,payMonthOf(CARE.y,CARE.q)[1]-1,25)));
+  const n=Math.max(on.length,3), total=on.reduce((a,x)=>a+x.amt,0);
+  const rows=Array.from({length:n},(_,i)=>{ const x=on[i];
+    return `<tr style="height:66px"><td class="c">${x?i+1:''}</td><td class="c">${x?`${esc(x.r.emp)}<br>${esc((x.r.phone||'').replace(/-/g,''))}`:''}</td><td class="c">${x?esc(x.r.kid):''}</td><td class="c">${x?`${CARE.y}/ ${qRange(CARE.q).replace('月',' 月')}<br>育兒津貼`:''}</td><td class="c">${x?x.amt:''}</td><td></td></tr>`; }).join('');
+  return `<div class="pg p" style="padding:70px 64px 0">
+    <div style="text-align:center;font-size:26px;letter-spacing:2px;margin-bottom:14px">${esc(p.unit||'')}</div>
+    <div style="text-align:center;font-size:17px;letter-spacing:1px;margin-bottom:26px">${CARE.y} 年度雇主補助受僱者子女育兒補貼印領清冊</div>
+    <div style="text-align:right;font-size:16px;margin-bottom:8px">請領日期：${ry} 年 ${rm} 月 ${rd} 日</div>
+    <table class="ft" style="width:666px;font-size:16px"><colgroup><col style="width:72px"><col style="width:120px"><col style="width:104px"><col style="width:132px"><col style="width:112px"><col style="width:126px"></colgroup>
+      <tr style="height:52px"><td class="c">序號</td><td class="c">受僱者姓名<br>(含連絡電話)</td><td class="c">子女姓名</td><td class="c">受領事由</td><td class="c">補貼金額(元)</td><td class="c">受領人中文簽章</td></tr>
+      ${rows}
+      <tr style="height:30px"><td colspan="6">合計：${on.length} 位</td></tr>
+    </table>
+    <div style="font-size:18px;margin:34px 0 0 360px;line-height:2.6">小計：${money(total)} 元<br>承辦人：<br>單位主管：</div>
+    <div style="position:absolute;left:0;right:0;bottom:40px;text-align:center;font-size:15px">第 1 頁／共 1 頁</div>
+  </div>`;
+}
+async function carePdf(settle){
+  try{
+    CARE.busy='產生中…'; render(); await libs();
+    const {PDFDocument}=window.PDFLib, out=await PDFDocument.create(), stage=$('pdfstage');
+    if(!settle){
+      stage.innerHTML=pageCare(); const el=stage.firstElementChild;
+      try{ if(!kaiOk()) await document.fonts.load('20px "LXGW WenKai TC"', el.textContent); await document.fonts.ready; }catch(e){}
+      const c=await window.html2canvas(el,{scale:2,backgroundColor:'#ffffff',logging:false});
+      out.addPage([595.28,841.89]).drawImage(await out.embedJpg(dataUrlBytes(c.toDataURL('image/jpeg',.92))),{x:0,y:0,width:595.28,height:841.89}); stage.innerHTML='';
+    } else {
+      const Y=CARE.d.years[CARE.ky]||{files:{}};
+      for(const s of CARE_SLOTS) for(const f of [...((Y.files||{})[s.k]||[]),...(CARE.local[CARE.ky+':'+s.k]||[])]){
+        const bytes=await fileBytes(f), t=f.type||'';
+        if(t.includes('pdf')){ const src=await PDFDocument.load(bytes,{ignoreEncryption:true}); (await out.copyPages(src,src.getPageIndices())).forEach(pp=>out.addPage(pp)); }
+        else { const im=t.includes('png')?await out.embedPng(bytes):(t.includes('jpeg')||t.includes('jpg'))?await out.embedJpg(bytes):await out.embedJpg(await toJpeg(bytes,t));
+          const land=im.width>im.height, [W,H]=land?[841.89,595.28]:[595.28,841.89], m=24, sc=Math.min((W-2*m)/im.width,(H-2*m)/im.height);
+          out.addPage([W,H]).drawImage(im,{x:(W-im.width*sc)/2,y:(H-im.height*sc)/2,width:im.width*sc,height:im.height*sc}); }
+      }
+      if(!out.getPageCount()){ toast('還沒有上傳核銷的檔案'); return; }
+    }
+    const bytes=await out.save();
+    if(OPT.downloads===undefined){ try{ OPT.downloads=await claude.use('downloads'); }catch(e){ OPT.downloads=null; } }
+    const name=settle?`${CENTERS[S.center].name}_托兒措施補助核銷_${CARE.ky}年.pdf`:`${CENTERS[S.center].name}_育兒補貼印領清冊_${CARE.y}年${qRange(CARE.q)}.pdf`;
+    if(!OPT.downloads) toast('這個畫面不能下載檔案，請在電腦瀏覽器開啟');
+    else { try{ await OPT.downloads.save({filename:name,data:bytes}); toast(`已下載 ${name}`); }catch(e){ if(e&&e.code!=='declined') toast('下載失敗，請再按一次'); } }
+  }catch(e){ console.error(e); toast('PDF 產生失敗，請再試一次'); }
+  finally{ CARE.busy=''; render(); }
+}
+async function careImportXls(file){
+  try{
+    if(!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+    const wb=window.XLSX.read(new Uint8Array(await file.arrayBuffer()),{type:'array'}), ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=window.XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    let n=0; const have=new Set(CARE.d.list.map(r=>r.emp+'|'+r.kid));
+    rows.slice(1).forEach(r=>{ let [emp,phone,esex,kid,ksex,age,note]=r.map(x=>String(x).trim());
+      if(!emp||/^範例/.test(emp)||!kid) return;
+      const m=emp.match(/^(.+?)[（(](\d+)\/(\d+)\/(\d+)到職[)）]$/); let from=`${ROC_NOW+1911}-01`;
+      if(m){ emp=m[1]; from=`${+m[2]+1911}-${String(+m[3]).padStart(2,'0')}`; note=[`${m[2]}/${m[3]}/${m[4]}到職`,note].filter(Boolean).join('；'); }
+      if(have.has(emp+'|'+kid)) return;
+      CARE.d.list.push({id:'k'+Date.now().toString(36)+n,emp,phone,esex:esex||'女',kid,ksex:ksex||'男',age:n0(age),dis:/身障/.test(note),from,to:'',note}); n++; });
+    saveCare(); render(); toast(n?`已匯入 ${n} 位，請確認每位的「開始月份」`:'沒有新的名單可以匯入');
+  }catch(e){ console.error(e); toast('這個 Excel 讀不到，請確認是托兒措施的申請名冊'); }
+}
+async function careXlsx(){
+  try{
+    if(!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+    const head=['*受僱者姓名','*受僱者聯絡電話','*性別','*子女姓名','*性別','*年齡\n(歲)','*備註'];
+    const y=CARE.ky, ym0=`${y+1911}-01`, ym1=`${y+1911}-12`;
+    const rows=CARE.d.list.filter(r=>!(r.to&&r.to<ym0)&&!(r.from&&r.from>ym1)).map(r=>[r.emp,r.phone,r.esex,r.kid,r.ksex,n0(r.age),[r.note,r.dis&&!/身障/.test(r.note||'')?'子女領有身障手冊':''].filter(Boolean).join('；')]);
+    const ws=window.XLSX.utils.aoa_to_sheet([head,['範例：王大明','0911-222-333','男','王小明','男',2,''],...rows]);
+    ws['!cols']=[{wch:18},{wch:16},{wch:6},{wch:12},{wch:6},{wch:8},{wch:24}];
+    const wb=window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb,ws,'sheet1');
+    const data=window.XLSX.write(wb,{type:'array',bookType:'xlsx'});
+    if(OPT.downloads===undefined){ try{ OPT.downloads=await claude.use('downloads'); }catch(e){ OPT.downloads=null; } }
+    const name=`${CENTERS[S.center].name}_托兒措施補助申請名冊_${y}年.xlsx`;
+    if(!OPT.downloads) toast('這個畫面不能下載檔案'); else { try{ await OPT.downloads.save({filename:name,data:new Uint8Array(data)}); toast(`已下載 ${name}`); }catch(e){ if(e&&e.code!=='declined') toast('下載失敗，請再按一次'); } }
+  }catch(e){ console.error(e); toast('Excel 產生失敗，請確認網路後再試一次'); }
+}
+function carePrint(){
+  let pa=$('printarea'); if(!pa){ pa=document.createElement('div'); pa.id='printarea'; document.body.appendChild(pa); }
+  pa.innerHTML=pageCare(); setTimeout(()=>window.print(),100);
+}
+async function careUpload(k,files){
+  const a=db?await getAssets():null, Y=CARE.d.years[CARE.ky]=CARE.d.years[CARE.ky]||{files:{}}; Y.files=Y.files||{}; CARE.busy='上傳中…'; render();
+  for(const f of files){
+    if(!/pdf|image\//.test(f.type)){ toast(`「${f.name}」不是 PDF 或圖片，略過`); continue; }
+    if(a){ try{ const r=await a.upload(f); (Y.files[k]=Y.files[k]||[]).push({id:r.id,url:r.url,name:f.name,type:f.type||r.contentType}); }catch(e){ toast(`「${f.name}」上傳失敗`); } }
+    else (CARE.local[CARE.ky+':'+k]=CARE.local[CARE.ky+':'+k]||[]).push({file:f,name:f.name,type:f.type,local:true});
+  }
+  CARE.busy=''; saveCare(); render();
+}
+
+/* ── 互動 ── */
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act^="c-"]'); if(!el||!CARE.d) return; const a=el.dataset.act, d=CARE.d;
+  if(a==='c-pdf') carePdf(false);
+  else if(a==='c-settle') carePdf(true);
+  else if(a==='c-print') carePrint();
+  else if(a==='c-xlsx') careXlsx();
+  else if(a==='c-add'){ d.list.push({id:'k'+Date.now().toString(36),emp:'',phone:'',esex:'女',kid:'',ksex:'男',age:1,dis:false,from:`${ROC_NOW+1911}-${String(M_NOW).padStart(2,'0')}`,to:'',note:''}); saveCare(); render(); }
+  else if(a==='c-del'){ CARE.confirm=el.dataset.id; render(); }
+  else if(a==='c-delyes'){ d.list.splice(+el.dataset.i,1); CARE.confirm=null; saveCare(); render(); }
+  else if(a==='c-rmfile'){ const k=el.dataset.k,i=+el.dataset.i; if(el.dataset.local){ CARE.local[CARE.ky+':'+k].splice(i,1); render(); return; }
+    const Y=d.years[CARE.ky], f=Y.files[k][i]; Y.files[k].splice(i,1); saveCare(); render(); getAssets().then(a=>{ if(a&&f&&f.id) a.delete(f.id).catch(()=>{}); }); }
+});
+document.addEventListener('change',e=>{
+  const el=e.target; if(S.tab!=='care'||!CARE.d||!$('main').contains(el)) return; const d=CARE.d;
+  if(el.id==='c-b'){ const [y,q]=el.value.split('-').map(Number); CARE.y=y; CARE.q=q; render(); return; }
+  if(el.id==='c-ky'){ CARE.ky=+el.value; render(); return; }
+  if(el.id==='c-xin'&&el.files[0]){ careImportXls(el.files[0]); el.value=''; return; }
+  if(el.dataset.cslot&&el.files.length){ careUpload(el.dataset.cslot,[...el.files]); el.value=''; return; }
+  if(el.dataset.con){ batch().skip[el.dataset.con]=!el.checked; saveCare(); setTimeout(softRender,0); }
+  else if(el.dataset.cl==='dis'){ d.list[+el.dataset.i].dis=el.checked; saveCare(); setTimeout(softRender,0); }
+  else if(el.dataset.cl){ setTimeout(softRender,0); }
+});
+document.addEventListener('input',e=>{
+  const el=e.target; if(S.tab!=='care'||!CARE.d) return; const d=CARE.d;
+  if(el.dataset.cl&&el.dataset.cl!=='dis'){ d.list[+el.dataset.i][el.dataset.cl]=el.dataset.cl==='age'?n0(el.value):el.value; saveCare(); }
+  else if(el.dataset.camt){ batch().amt[el.dataset.camt]=el.value===''?'':n0(el.value); saveCare(); }
+  else if(el.dataset.cb){ batch()[el.dataset.cb]=el.value; saveCare(); }
+});
+
 /* ───────── 互動 ───────── */
 document.addEventListener('click',e=>{
   const cb=e.target.closest('[data-center]');
@@ -2268,6 +2499,7 @@ document.addEventListener('click',e=>{
   else if(a==='newtype'){ S.newType = S.newType===el.dataset.type?null:el.dataset.type; render(); const n=$('nc-name'); if(n) n.focus(); }
   else if(a==='togglecase'){ S.caseOpen = S.caseOpen===el.dataset.id?null:el.dataset.id; S.confirmDel=null; render(); }
   else if(a==='opencase'){ S.caseOpen=el.dataset.id; }
+  else if(a==='gocare'){ if(el.dataset.q){ CARE.y=+el.dataset.y; CARE.q=+el.dataset.q; } else CARE.ky=+el.dataset.y; }
   else if(a==='gofac'){ FAC.y=+el.dataset.y; FAC.stage=+el.dataset.s; facSubscribe(); }
   else if(a==='godis'){ DIS.y=+el.dataset.y; DIS.q=+el.dataset.q; disSubscribe(); DIS.prevKids=undefined; }
   else if(a==='goopt'){ OPT.y=+el.dataset.y; OPT.q=+el.dataset.q; optSubscribe(); }
@@ -2317,7 +2549,7 @@ document.addEventListener('submit',e=>{
 
 function route(){
   const h=(location.hash||'').slice(1);
-  S.tab=['home','calendar','cases','calc','opt','dis','visit','fac'].includes(h)?h:'home';
+  S.tab=['home','calendar','cases','calc','opt','dis','visit','fac','care'].includes(h)?h:'home';
   render(); window.scrollTo(0,0);
 }
 addEventListener('hashchange',route);
