@@ -287,6 +287,28 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 .lg{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 3px 0 10px;background:var(--teal);vertical-align:0}
 .lg.k-reg{background:var(--coral)} .lg.k-event{background:var(--purple)}
 @media (max-width:600px){.evt{display:none}.mcal-d{min-height:78px;padding:2px 1px}.ev{font-size:10.5px;padding:0 1px;gap:2px}.ev i{width:6px;height:6px}.mcal-h{font-size:11px}}
+.mcal-d.sel{box-shadow:inset 0 0 0 2.5px var(--accent)}
+.mcal-n .m1{margin-right:1px}@media (max-width:640px){.mcal-n .m1{display:none}}
+.dots{display:none;justify-content:center;gap:3px;flex-wrap:wrap;margin-top:2px}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--teal)}.dots i.k-reg{background:var(--coral)}.dots i.k-event{background:var(--purple)}
+.dots b{font-size:10px;line-height:7px}
+.daypanel{margin-top:12px;border:2px solid var(--line);border-radius:14px;padding:10px 12px;background:var(--card)}
+.agenda{display:flex;flex-direction:column;border:2px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
+.agday{display:flex;gap:10px;padding:8px 10px;border-top:1px solid var(--track)}
+.agday:first-child{border-top:0}
+.agday.is-today{background:var(--soft)} .agday.is-past{opacity:.72}
+.agd{width:44px;flex:none;display:flex;flex-direction:column;align-items:center;font-size:12px;color:var(--muted);font-weight:700}
+.agdn{font-family:var(--f-num);font-size:22px;font-weight:800;color:var(--ink);line-height:1.1}
+.agl{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.agrow{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;padding:5px 6px;border-radius:10px;font:inherit;color:var(--ink);text-align:left;cursor:pointer;min-width:0}
+.agrow:hover{background:var(--ground)}
+.agrow i{width:10px;height:10px;border-radius:50%;flex:none;background:var(--teal)}
+.agrow.k-reg i{background:var(--coral)} .agrow.k-event i{background:var(--purple)}
+.agrow.s-cancel,.agrow.s-noshow{opacity:.55}
+.agt{width:42px;flex:none;font-size:13px;font-weight:700;color:var(--muted)}
+.agn{flex:1;min-width:0;display:flex;flex-direction:column;font-size:15px;line-height:1.35}
+.agn b{font-weight:700;overflow-wrap:anywhere}.agn .muted{font-size:12.5px}
+@media (max-width:640px){.mcal .ev{display:none}.dots{display:flex}.mcal-d{min-height:54px}}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 
@@ -315,7 +337,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 17:20</div>
+<div class="ver" id="ver">版本 115/11/24 18:23</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -1731,7 +1753,35 @@ document.addEventListener('input',e=>{
 const VSTAT={book:'已預約',came:'已參觀',enrol:'已報名',noshow:'沒來',cancel:'取消'};
 const VKIND={visit:'參觀',reg:'註冊',event:'其他行程'};
 const VSRC=['網路','朋友介紹','路過','電話詢問','社區活動','其他'];
-const VIS={edit:null, imp:null, kw:'', confirm:null, month:new Date(today.getFullYear(),today.getMonth(),1)};
+const VIS={edit:null, imp:null, kw:'', confirm:null, month:new Date(today.getFullYear(),today.getMonth(),1), sel:isoOf(today),
+  mode:(()=>{ const m=lsGet('visitMode'); return m==='list'||m==='grid'?m:(window.innerWidth<640?'list':'grid'); })()};
+function evRow(v){
+  const k=vKind(v), past=parseDate(v.date)<today;
+  return `<button class="agrow k-${k} s-${v.status||''}" data-act="v-edit" data-id="${esc(v.id)}">
+    <span class="agt num">${v.time?v.time:'整天'}</span><i></i>
+    <span class="agn"><b>${esc(vLabel(v))}</b>${v.phone?`<span class="muted">${esc(v.phone)}</span>`:''}</span>
+    ${k==='visit'&&v.status&&v.status!=='book'?`<span class="chip ${v.status==='enrol'?'ok':v.status==='came'?'ok':'late'}">${VSTAT[v.status]}</span>`:k==='visit'&&past?'<span class="chip due">待更新</span>':''}
+  </button>`;
+}
+function dayItems(iso){
+  const d=parseDate(iso); const vs=(S.visits||[]).filter(v=>v.date===iso).sort((a,b)=>(a.time?1:0)-(b.time?1:0)||(a.time||'').localeCompare(b.time||''));
+  const cs=customOf(d.getMonth()+1,d.getFullYear()-1911).filter(t=>t.day===d.getDate());
+  return {vs,cs};
+}
+function agendaList(){
+  const m0=VIS.month, y=m0.getFullYear(), mo=m0.getMonth(), n=new Date(y,mo+1,0).getDate(); let out='', any=false;
+  for(let d=1; d<=n; d++){ const iso=isoOf(new Date(y,mo,d)), {vs,cs}=dayItems(iso); if(!vs.length&&!cs.length) continue; any=true;
+    const isT=iso===isoOf(today), past=new Date(y,mo,d)<today;
+    out+=`<div class="agday ${isT?'is-today':''} ${past?'is-past':''}" id="ag-${iso}"><div class="agd"><span class="agdn">${d}</span><span>${'日一二三四五六'[new Date(y,mo,d).getDay()]}${isT?'・今天':''}</span></div>
+      <div class="agl">${cs.map(t=>`<button class="agrow k-event" data-act="cu-edit" data-id="${esc(t.custom.id)}"><span class="agt">自訂</span><i></i><span class="agn"><b>${esc(t.title)}</b></span></button>`).join('')}${vs.map(evRow).join('')}</div></div>`; }
+  return any?`<div class="agenda">${out}</div>`:`<div class="empty">${CH.ding}<span>這個月還沒有行程。按「＋ 新增」加一筆。</span></div>`;
+}
+function dayPanel(){
+  const iso=VIS.sel; if(!iso||isoOf(VIS.month).slice(0,7)!==iso.slice(0,7)) return '';
+  const {vs,cs}=dayItems(iso);
+  return `<div class="daypanel"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><b>${rocDate(parseDate(iso))}</b><button class="btn sm" data-act="v-addday" data-date="${iso}">＋ 這天新增</button></div>
+    ${vs.length||cs.length?`<div class="agl">${cs.map(t=>`<button class="agrow k-event" data-act="cu-edit" data-id="${esc(t.custom.id)}"><span class="agt">自訂</span><i></i><span class="agn"><b>${esc(t.title)}</b></span></button>`).join('')}${vs.map(evRow).join('')}</div>`:'<div class="muted" style="font-size:13.5px">這天沒有行程。</div>'}</div>`;
+}
 function saveVisit(v){
   const i=(S.visits||[]).findIndex(x=>x.id===v.id); if(i>=0) S.visits[i]=v; else S.visits.push(v);
   if(!db){ saveLocal(); return; }
@@ -1812,8 +1862,11 @@ function monthGrid(){
     ${days.map(d=>{ const iso=isoOf(d), out=d.getMonth()!==mo, isT=iso===isoOf(today);
       const vs=(byDate[iso]||[]).slice().sort((a,b)=>(a.time?1:0)-(b.time?1:0)||(a.time||'').localeCompare(b.time||''));
       const cs=custom(d);
-      return `<div class="mcal-d ${out?'mo':''}" data-act="v-day" data-date="${iso}">
-        <div class="mcal-n"><span class="${isT?'today':''}">${d.getDate()===1?`${d.getMonth()+1}月${d.getDate()}日`:d.getDate()}</span></div>
+      const dots=[...cs.map(()=>'event'),...vs.map(v=>vKind(v))];
+      return `<div class="mcal-d ${out?'mo':''} ${iso===VIS.sel?'sel':''}" data-act="v-day" data-date="${iso}">
+
+        <div class="mcal-n"><span class="${isT?'today':''}">${d.getDate()===1?`<span class="m1">${d.getMonth()+1}月</span>${d.getDate()}`:d.getDate()}</span></div>
+        <div class="dots">${dots.slice(0,5).map(k=>`<i class="k-${k}"></i>`).join('')}${dots.length>5?`<b>+${dots.length-5}</b>`:''}</div>
         ${cs.map(t=>`<button class="ev bar" data-act="cu-edit" data-id="${esc(t.custom.id)}" title="${esc(t.title)}">${esc(t.title)}</button>`).join('')}
         ${vs.map(v=>{ const k=vKind(v), st=v.status||''; return v.time
           ? `<button class="ev k-${k} s-${st}" data-act="v-edit" data-id="${esc(v.id)}" title="${esc(tText(v.time)+' '+vLabel(v))}"><i></i><span class="evt">${tText(v.time)} </span>${esc(vLabel(v))}</button>`
@@ -1869,12 +1922,13 @@ function viewVisit(){
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <span class="muted" style="font-size:13px">本月參觀 ${thisM.length} 組・註冊 ${regM.length} 位・累計參觀後報名 ${enrol.length}/${came.length||0}</span>
+        <div class="seg" role="group" aria-label="顯示方式"><button data-act="v-mode" data-m="grid" aria-pressed="${VIS.mode==='grid'}">月曆</button><button data-act="v-mode" data-m="list" aria-pressed="${VIS.mode==='list'}">清單</button></div>
         <button class="btn sm" data-act="v-new">＋ 新增</button>
         <label class="btn ghost sm" style="cursor:pointer">匯入 Google 行事曆<input id="v-ics" type="file" accept=".ics,text/calendar" hidden></label>
       </div>
     </div>
-    <p class="muted" style="font-size:12.5px;margin:0 0 8px">點空白的日子就能在那天新增；點行程可以編輯。<span class="lg k-visit"></span>參觀 <span class="lg k-reg"></span>註冊 <span class="lg k-event"></span>其他</p>
-    ${monthGrid()}
+    <p class="muted" style="font-size:12.5px;margin:0 0 8px">${VIS.mode==='list'?'點行程可以編輯、改狀態。':'點日子看那天的行程；點行程可以編輯。'}<span class="lg k-visit"></span>參觀 <span class="lg k-reg"></span>註冊 <span class="lg k-event"></span>其他</p>
+    ${VIS.mode==='list'?agendaList():monthGrid()+dayPanel()}
     <details style="margin-top:10px"><summary class="muted" style="cursor:pointer;font-size:13.5px">怎麼從 Google 行事曆匯出？</summary>
       <ol style="font-size:13.5px;margin:8px 0 0;padding-left:20px;line-height:1.8"><li>用電腦打開 Google 日曆，右上角 ⚙️ → <b>設定</b> → 左邊 <b>匯入與匯出</b> → <b>匯出</b>，會下載一個 .zip。</li><li>解壓縮後裡面是 <b>.ics</b> 檔，回到這裡按「匯入 Google 行事曆」選那個檔。</li><li>預設全部匯入：標題有「參觀」算參觀、有「註冊」算註冊，其他是一般行程。重複匯入不會重複新增。</li></ol></details>
   </section>
@@ -1891,7 +1945,9 @@ function visitHomeCard(){
 /* ── 互動 ── */
 document.addEventListener('click',e=>{
   const el=e.target.closest('[data-act^="v-"]'); if(!el) return; const a=el.dataset.act;
-  if(a==='v-day'){ if(e.target.closest('.ev')) return; VIS.edit={date:el.dataset.date,time:'10:00',kind:'visit',status:'book'}; VIS.confirm=null; render(); const f=$('v-form'); if(f) f.scrollIntoView({block:'center'}); const n=$('v-parent'); if(n) n.focus({preventScroll:true}); return; }
+  if(a==='v-day'){ if(e.target.closest('.ev')) return; VIS.sel=el.dataset.date; render(); const p=document.querySelector('.daypanel'); if(p&&window.innerWidth<640) p.scrollIntoView({block:'nearest',behavior:'smooth'}); return; }
+  if(a==='v-addday'){ VIS.edit={date:el.dataset.date,time:'10:00',kind:'visit',status:'book'}; VIS.confirm=null; render(); const f=$('v-form'); if(f) f.scrollIntoView({block:'center'}); return; }
+  if(a==='v-mode'){ VIS.mode=el.dataset.m; lsSet('visitMode',VIS.mode); render(); if(VIS.mode==='list'){ const t=$('ag-'+isoOf(today)); if(t) t.scrollIntoView({block:'start'}); } return; }
   if(a==='v-new'){ VIS.edit={date:isoOf(today),time:'10:00',kind:'visit',status:'book'}; VIS.confirm=null; render(); const f=$('v-form'); if(f) f.scrollIntoView({block:'center'}); }
   else if(a==='v-kind'){ const cur=VIS.edit; ['date','time','parent','phone','child','birth','note','title'].forEach(k=>{ const i=$('v-'+k); if(i) cur[k]=i.value; }); cur.kind=el.dataset.k; if(cur.kind==='reg'&&(!cur.status||cur.status==='book')) cur.status='enrol'; render(); }
   else if(a==='v-edit'){ const v=S.visits.find(x=>x.id===el.dataset.id); if(v){ VIS.edit={...v}; VIS.confirm=null; if(S.tab!=='visit') location.hash='visit'; setTimeout(()=>{ render(); const f=$('v-form'); if(f) f.scrollIntoView({block:'center'}); },0); } }
