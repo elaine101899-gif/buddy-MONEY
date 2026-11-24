@@ -292,7 +292,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 16:19</div>
+<div class="ver" id="ver">版本 115/11/24 16:48</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -745,6 +745,16 @@ const lastQ=()=>{ let q=Math.ceil(M_NOW/3)-1, y=ROC_NOW; if(q<1){q=4;y--;} retur
 const OPT={ y:lastQ()[0], q:lastQ()[1], d:null, exists:false, unsub:null, profile:{}, profUnsub:null,
   local:{}, busy:'', preview:false, assets:undefined, downloads:undefined, showProfile:false };
 const qMonths=q=>[q*3-2,q*3-1,q*3];
+/* 申請期間：預設整季，可自己改起迄（例如社會局准請到 11 月底） */
+function periodOf(y,q,d){ const s=(d&&d.pStart)||isoOf(new Date(y+1911,q*3-3,1)), e=(d&&d.pEnd)||isoOf(new Date(y+1911,q*3,0)); return [s,e]; }
+function periodQs(s,e){ const a=parseDate(s),b=parseDate(e); if(!a||!b) return []; const qa=Math.ceil((a.getMonth()+1)/3), qb=Math.ceil((b.getMonth()+1)/3)+(b.getFullYear()-a.getFullYear())*4; const r=[]; for(let q=qa;q<=qb;q++) r.push(((q-1)%4)+1); return r; }
+function periodMonths(s,e){ const a=parseDate(s),b=parseDate(e); if(!a||!b||b<a) return []; const r=[]; for(let y=a.getFullYear(),m=a.getMonth(); new Date(y,m,1)<=b; m++){ if(m>11){m=0;y++;} r.push(m+1); } return r; }
+const qLabelOf=qs=>qs.length>1?`${qs[0]}-${qs[qs.length-1]}`:String(qs[0]||'');
+const qCnOf=qs=>qs.length>1?`${QCN[qs[0]]}至${QCN[qs[qs.length-1]]}`:QCN[qs[0]||1];
+function periodField(pre,y,q,d){ const [s,e]=periodOf(y,q,d), custom=!!(d.pStart||d.pEnd);
+  return `<div class="field"><label for="${pre}-ps">申請期間（起）</label><input type="date" id="${pre}-ps" data-period="pStart" data-pre="${pre}" value="${esc(s)}"></div>
+  <div class="field"><label for="${pre}-pe">申請期間（迄）</label><input type="date" id="${pre}-pe" data-period="pEnd" data-pre="${pre}" value="${esc(e)}"></div>
+  ${custom?`<button class="btn ghost sm" data-act="${pre}-preset" style="align-self:flex-end">恢復整季</button>`:''}`; }
 const isoOf=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const isoToday=()=>{ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 function optDefault(){
@@ -766,7 +776,7 @@ function optSubscribe(){
   OPT.unsub=db.doc(optPath()).onSnapshot(s=>{
     if(OPT.y!==y||OPT.q!==q||S.center!==c) return;
     OPT.exists=s.exists; OPT.d=s.exists?JSON.parse(JSON.stringify(s.data())):optDefault();
-    if(!OPT.d.months||OPT.d.months.length!==3) OPT.d.months=qMonths(q).map(m=>({month:m,rows:[]}));
+    if(!OPT.d.months||!OPT.d.months.length) OPT.d.months=periodMonths(...periodOf(OPT.y,q,OPT.d)).map(m=>({month:m,rows:[]}));
     OPT.d.ros=Object.assign({cap:'',act:'',per:125000,eval:'優',ins:'符合',days:'符合',people:[]},OPT.d.ros||{});
     OPT.d.months.forEach(m=>{ m.rows=(m.rows||[]).filter(Boolean); }); OPT.d.ros.people=(OPT.d.ros.people||[]).filter(Boolean);
     OPT.d.req=OPT.d.req||{}; OPT.d.sign=OPT.d.sign||{}; OPT.d.files=OPT.d.files||{};
@@ -797,7 +807,7 @@ const staffDir=()=>(OPT.profile.staff=OPT.profile.staff||{});
 const n0=v=>Number(v)||0;
 function rosCalc(d){ const r=d.ros||{}, E=n0(r.act), A=Math.ceil(E/5), B=Math.ceil(E/4), C=Math.max(0,B-A), per=n0(r.per); return {E,A,B,C,per,total:per*C}; }
 const effAmt=d=>n0(d.amount)||rosCalc(d).total;
-function qEnd(){ return new Date(OPT.y+1911,OPT.q*3,0); }
+function qEnd(){ return parseDate(periodOf(OPT.y,OPT.q,OPT.d)[1]); }
 function workDays(iso){ const h=parseDate(iso); if(!h) return ''; const n=Math.round((qEnd()-h)/864e5)+1; return n>0?n+'天':''; }
 const rocShort=iso=>{ const d=parseDate(iso); return d?`${d.getFullYear()-1911}/${d.getMonth()+1}/${d.getDate()}`:''; };
 const rowA=r=>n0(r.fixed)+n0(r.other), rowB=r=>n0(r.labor)+n0(r.health)+n0(r.absent)+n0(r.od);
@@ -849,6 +859,7 @@ function viewOpt(){
       <div class="field"><label for="o-q">季別</label><select id="o-q">${[1,2,3,4].map(q=>`<option value="${q}" ${q===OPT.q?'selected':''}>第 ${q} 季（${q*3-2}–${q*3} 月）</option>`).join('')}</select></div>
       <button class="btn" data-act="o-pdf" ${OPT.busy?'disabled':''}>${OPT.busy||'下載整份 PDF'}</button>
       <button class="btn ghost" data-act="o-preview">${OPT.preview?'收起預覽':'預覽表格'}</button>
+      ${d?periodField('o',OPT.y,OPT.q,d):''}
     </div>
     ${kaiOk()?`<p style="margin:10px 0 0;font-size:13px" class="muted"><span class="chip ok">標楷體</span>　這台裝置有標楷體，PDF 的表格會用標楷體。</p>`
       :`<div class="tip" style="margin-top:10px"><b>這台裝置沒有標楷體</b>　PDF 會改用相近的楷體。要用標楷體，請在 Windows 電腦（內建標楷體）產生 PDF；Mac 可在「字體簿」下載「BiauKai 標楷體」。</div>`}
@@ -925,7 +936,7 @@ function viewOpt(){
   const rc=rosCalc(d), R=d.ros;
   const pool=[...new Map(d.months.flatMap(m=>m.rows).filter(r=>r.name).map(r=>[r.name,r])).values()].filter(r=>!R.people.some(x=>x.name===r.name));
   const ros=`<section class="card">
-    <div class="sec-h"><h2>2. 申請名冊彙整表</h2><span class="meta">${OPT.y} 年 ${OPT.q*3-2}–${OPT.q*3} 月</span></div>
+    <div class="sec-h"><h2>2. 申請名冊彙整表</h2><span class="meta">${rocShort(periodOf(OPT.y,OPT.q,d)[0])}–${rocShort(periodOf(OPT.y,OPT.q,d)[1])}</span></div>
     <div class="calc-io" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
       <div class="field"><label for="r-cap">核定收托數</label><input id="r-cap" type="number" min="0" data-ros="cap" value="${esc(R.cap)}"></div>
       <div class="field"><label for="r-act">實際收托數</label><input id="r-act" type="number" min="0" data-ros="act" value="${esc(R.act)}"></div>
@@ -950,7 +961,7 @@ function viewOpt(){
       <td><button class="x" data-act="r-del" data-i="${i}" aria-label="刪除" style="width:28px;height:28px">×</button></td></tr>`).join('')
       :`<tr><td colspan="9" class="muted" style="text-align:left;padding:10px">還沒有人員。從上面的選單加入，或按「新增一列」。</td></tr>`}
     </tbody></table></div>
-    <p class="muted" style="font-size:13px;margin:8px 0 0">在職天數＝到職日到季末（${rocShort(isoOf(qEnd()))}）的天數，自動計算。</p>
+    <p class="muted" style="font-size:13px;margin:8px 0 0">在職天數＝到職日到申請期間最後一天（${rocShort(isoOf(qEnd()))}）的天數，自動計算。</p>
   </section>`;
   return head+pv+prof+form+ros+pay.replace('2. 托育人員薪資清冊','3. 托育人員薪資清冊')+sign.replace('3. 員工簽收領據','4. 員工簽收領據')+att.replace('4. 附件','5. 附件');
 }
@@ -974,7 +985,7 @@ function pageApply(d,p){
    <div style="display:flex;align-items:baseline;font-size:18.7px;margin:4px 0 6px"><b style="font-size:21px;margin-left:110px;letter-spacing:2px">附表三</b><span style="margin-left:auto;margin-right:40px">填表日期 中華民國${fy}年 ${fm} 月 ${fd}日</span></div>
    <table class="ft" style="width:709px"><colgroup>${g.map(w=>`<col style="width:${w}px">`).join('')}</colgroup>
    <tr style="height:42px"><td colspan="9" class="c" style="font-size:18.7px">公共化及準公共托嬰中心照顧比優化獎勵計畫申請表</td></tr>
-   <tr style="height:47px"><td class="c">申請單位</td><td colspan="6">■${esc(p.unit||'')}<br>&nbsp;&nbsp;( ${ck(p.type==='公設民營')}公設民營${ck(p.type!=='公設民營')}準公共)</td><td class="c">申請<br>期間</td><td style="font-size:12.5px;white-space:nowrap">${OPT.y}年${[1,2].map(n=>ck(OPT.q===n)+'第'+n+'季').join('')}<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${[3,4].map(n=>ck(OPT.q===n)+'第'+n+'季').join('')}</td></tr>
+   <tr style="height:47px"><td class="c">申請單位</td><td colspan="6">■${esc(p.unit||'')}<br>&nbsp;&nbsp;( ${ck(p.type==='公設民營')}公設民營${ck(p.type!=='公設民營')}準公共)</td><td class="c">申請<br>期間</td><td style="font-size:12.5px;white-space:nowrap">${OPT.y}年${[1,2].map(n=>ck(periodQs(...periodOf(OPT.y,OPT.q,d)).includes(n))+'第'+n+'季').join('')}<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${[3,4].map(n=>ck(periodQs(...periodOf(OPT.y,OPT.q,d)).includes(n))+'第'+n+'季').join('')}</td></tr>
    <tr style="height:47px"><td class="c">負責人</td><td colspan="2" style="font-size:21px">${esc(p.owner||'')}</td><td colspan="2" class="c">身分證<br>統一編號</td><td colspan="2" class="c">${esc(p.ownerId||'')}</td><td class="c">立案<br>字號</td><td class="c">${esc(p.license||'').replace(/第/,'第<br>')}</td></tr>
    <tr style="height:56px"><td class="c">地&nbsp;&nbsp;&nbsp;&nbsp;址</td><td colspan="8" style="font-size:18.7px">${esc(p.address||'')}</td></tr>
    <tr style="height:46px"><td colspan="4" class="c">申請要件</td><td colspan="4" class="c">檢附相關證明文件</td><td class="c">主管機關審核結果</td></tr>
@@ -991,7 +1002,7 @@ function pageReceipt(d,p){
   const L='line-height:66.7px;font-size:26.7px;margin:0';
   return `<div class="pg p" style="padding:91px 76px">
     <div style="text-align:center;font-size:34.7px;font-weight:700;margin-bottom:16px">領據</div>
-    <p style="${L};text-indent:2em">茲收到台南<span style="display:inline-flex;flex-direction:column;font-size:18.7px;line-height:1.15;vertical-align:-6px;text-indent:0">市政府<span>社會局</span></span>撥付${OPT.y}年度第${QCN[OPT.q]}季${esc(p.type||'準公共')}托嬰中心照顧比優化獎助金，計新臺幣 <u>&nbsp;${W}&nbsp;</u> 萬 <u>&nbsp;${Y}&nbsp;</u> 元整，確實無訛。</p>
+    <p style="${L};text-indent:2em">茲收到台南<span style="display:inline-flex;flex-direction:column;font-size:18.7px;line-height:1.15;vertical-align:-6px;text-indent:0">市政府<span>社會局</span></span>撥付${OPT.y}年度第${qCnOf(periodQs(...periodOf(OPT.y,OPT.q,d)))}季${esc(p.type||'準公共')}托嬰中心照顧比優化獎助金，計新臺幣 <u>&nbsp;${W}&nbsp;</u> 萬 <u>&nbsp;${Y}&nbsp;</u> 元整，確實無訛。</p>
     <p style="${L}">&nbsp;</p>
     <p style="${L}">機構名稱：<span style="font-size:24px">${esc(p.unit||'')}</span></p>
     <p style="${L};position:relative">負責人簽章：<span class="stamp" style="left:322px;top:6px;width:73px;height:77px">負責人<br>章</span><span class="stamp" style="left:435px;top:44px;width:231px;height:333px;align-items:center;padding-top:0">機構圖記</span></p>
@@ -1010,7 +1021,7 @@ function pageRoster(d,p){
   const natH=(43.15+66.75+54+54+44.25+16.9+28.5+67.5+n*36+27.75*4+45+40)*PT;
   const f=Math.min((1123-134)/natW,(794-110)/natH);
   const px=pt=>(pt*PT*f).toFixed(1)+'px';
-  const m1=OPT.q*3-2, m3=OPT.q*3;
+  const pm=periodMonths(...periodOf(OPT.y,OPT.q,d)), m1=pm[0], m3=pm[pm.length-1];
   const rows=Array.from({length:n},(_,i)=>{ const x=R.people[i];
     return `<tr style="height:${px(36)}"><td class="c">${x?i+1:''}</td>`+(x?`<td class="c">${esc(x.title)}</td><td class="c">${esc(x.name)}</td><td class="c">${esc(x.idno)}</td><td class="c">${rocShort(x.hire)}</td><td class="c">${fmtN(x.ins)}</td><td class="c">${rocShort(x.insDate)}</td><td class="c">${workDays(x.hire)}</td><td colspan="5" style="font-size:${px(16)}">${esc(x.note)}</td>`
       :`<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td colspan="5"></td>`)+`</tr>`; }).join('');
@@ -1037,8 +1048,8 @@ function pagesPayroll(d,p){
   const f=0.62, px=pt=>(pt*PT*f).toFixed(1)+'px';
   const cw=[7.75,7.625,16.25,13.25,16.25,19,22.625,14.5,12.125,12.125,14.25,16,12.875,14.5,23.875];
   const cws=cw.map(c=>(c*7.5+5)*f), tw=cws.reduce((a,b)=>a+b,0);
-  const fs=px(14), m1=d.months[0].month, m3=d.months[2].month, Y=OPT.y, last=new Date(Y+1911,m3,0).getDate();
-  const title=`<tr style="height:${px(75)}"><td colspan="2" class="nb"></td><td colspan="12" class="nb c" style="font-size:${px(22)}"><u>${esc(p.unit||'')}申請公共化及準公共托嬰中心照顧比優化獎勵<br>${Y}年 ${m1} 月 1 日至 ${Y} 年 ${m3} 月 ${last} 日 托育人員薪資清冊</u></td><td class="nb"></td></tr>`;
+  const fs=px(14), m1=d.months[0].month, m3=d.months[d.months.length-1].month, Y=OPT.y, last=parseDate(periodOf(OPT.y,OPT.q,d)[1]).getDate(), d1=parseDate(periodOf(OPT.y,OPT.q,d)[0]).getDate();
+  const title=`<tr style="height:${px(75)}"><td colspan="2" class="nb"></td><td colspan="12" class="nb c" style="font-size:${px(22)}"><u>${esc(p.unit||'')}申請公共化及準公共托嬰中心照顧比優化獎勵<br>${Y}年 ${m1} 月 ${d1} 日至 ${Y} 年 ${m3} 月 ${last} 日 托育人員薪資清冊</u></td><td class="nb"></td></tr>`;
   const hdr=(first)=>(first?`<tr style="height:${px(19.5)}"><td rowspan="2" class="c">月份</td><td rowspan="2" class="c">編號</td><td rowspan="2" class="c">員工姓名</td><td rowspan="2" class="c">職稱</td><td rowspan="2" class="c">身分證字號</td><td colspan="3" class="c bl">應發薪資</td><td colspan="5" class="c yl">應扣項目</td><td rowspan="2" class="c">合&nbsp;&nbsp;&nbsp;計<br>（A-B）</td><td rowspan="2" class="c">備註</td></tr><tr style="height:${px(88.9)}">`
     :`<tr style="height:${px(95)}"><td class="c">月份</td><td class="c">編號</td><td class="c">請領人姓名</td><td class="c">職稱</td><td class="c">身分證字號</td>`)
     +SUBH.map((h,i)=>`<td class="c ${i<3?'bl':'yl'}" style="${i===1||i===6?`font-size:${px(10.5)}`:''}">${h}</td>`).join('')
@@ -1178,6 +1189,25 @@ async function optPdf(){
   finally{ OPT.busy=''; render(); }
 }
 
+document.addEventListener('change',e=>{
+  const el=e.target; if(!el.dataset||!el.dataset.period) return;
+  const pre=el.dataset.pre, isO=pre==='o', st=isO?OPT:DIS, d=st.d; if(!d) return;
+  const def=periodOf(st.y,st.q,{}); let v=el.value;
+  if(!v) v=el.dataset.period==='pStart'?def[0]:def[1];
+  d[el.dataset.period]= v===(el.dataset.period==='pStart'?def[0]:def[1]) ? '' : v;
+  const [s,en]=periodOf(st.y,st.q,d);
+  if(parseDate(en)<parseDate(s)){ toast('迄日要在起日之後'); d[el.dataset.period]=''; }
+  if(isO){ const ms=periodMonths(...periodOf(st.y,st.q,d)); d.months=ms.map(m=>d.months.find(x=>x.month===m)||{month:m,rows:[]}); saveOpt(); }
+  else saveDis();
+  setTimeout(softRender,0);
+});
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act="o-preset"],[data-act="d-preset"]'); if(!el) return;
+  const isO=el.dataset.act==='o-preset', st=isO?OPT:DIS, d=st.d; if(!d) return;
+  d.pStart=''; d.pEnd='';
+  if(isO){ d.months=qMonths(st.q).map(m=>d.months.find(x=>x.month===m)||{month:m,rows:[]}); saveOpt(); } else saveDis();
+  render();
+});
 /* ── 互動 ── */
 document.addEventListener('click',e=>{
   const el=e.target.closest('[data-act^="o-"]'); if(!el||!OPT.d&&el.dataset.act!=='o-preview') return;
@@ -1275,7 +1305,8 @@ function disMonths(fromIso,toIso){
   }
   return m;
 }
-const qStartIso=()=>isoOf(new Date(DIS.y+1911,DIS.q*3-3,1)), qEndIso=()=>isoOf(new Date(DIS.y+1911,DIS.q*3,0));
+const qStartIso=()=>periodOf(DIS.y,DIS.q,DIS.d)[0], qEndIso=()=>periodOf(DIS.y,DIS.q,DIS.d)[1];
+const disQL=d=>d.qLabel||qLabelOf(periodQs(...periodOf(DIS.y,DIS.q,d)));
 const kidFrom=k=>k.from||(k.enroll&&k.enroll>qStartIso()?k.enroll:qStartIso());
 const kidTo=k=>k.to||qEndIso();
 const kidMonths=k=>k.months!==''&&k.months!=null?n0(k.months):disMonths(kidFrom(k),kidTo(k));
@@ -1328,6 +1359,7 @@ function viewDis(){
       <div class="field"><label for="d-qq">季別</label><select id="d-qq">${[1,2,3,4].map(q=>`<option value="${q}" ${q===DIS.q?'selected':''}>第 ${q} 季（${q*3-2}–${q*3} 月）</option>`).join('')}</select></div>
       <button class="btn" data-act="d-pdf" ${DIS.busy?'disabled':''}>${DIS.busy||'下載整份 PDF'}</button>
       <button class="btn ghost" data-act="d-preview">${DIS.preview?'收起預覽':'預覽表格'}</button>
+      ${DIS.d?periodField('d',DIS.y,DIS.q,DIS.d):''}
     </div>
     ${kaiOk()?`<p style="margin:10px 0 0;font-size:13px" class="muted"><span class="chip ok">標楷體</span>　這台裝置有標楷體，PDF 的表格會用標楷體。</p>`:`<div class="tip" style="margin-top:10px"><b>這台裝置沒有標楷體</b>　PDF 會改用相近的楷體。要用標楷體，請在 Windows 電腦產生 PDF。</div>`}
   </section>`;
@@ -1351,9 +1383,9 @@ function viewDis(){
       <div class="hl2"><span class="k"><b>托育人員照顧費</b><small>給托育人員，每人一張領據</small></span><span class="v">$${money(T.care)}</span></div></div>
   </section>`;
   const kids=`<section class="card">
-    <div class="sec-h"><h2>2. 幼兒名冊</h2><span class="meta">${DIS.y} 年第 ${DIS.q} 季（${rocDot(qStartIso())}–${rocDot(qEndIso())}）</span></div>
-    <div class="tip" style="margin-bottom:10px"><b>月數自動算</b>　每月以 30 日計，滿 15 日算 1 個月，未滿 15 日算半個月。送托期間空白＝收托日（或季初）到季末。金額依障別自動帶入，也可以直接改。</div>
-    <div class="field" style="max-width:260px;margin-bottom:10px"><label for="d-ql">名冊「第___季」欄（空白＝${DIS.q}）</label><input id="d-ql" data-d="qLabel" value="${esc(d.qLabel||'')}" placeholder="例：3-4"></div>
+    <div class="sec-h"><h2>2. 幼兒名冊</h2><span class="meta">申請期間 ${rocDot(qStartIso())}–${rocDot(qEndIso())}</span></div>
+    <div class="tip" style="margin-bottom:10px"><b>月數自動算</b>　每月以 30 日計，滿 15 日算 1 個月，未滿 15 日算半個月。送托期間空白＝收托日（或申請期間第一天）到申請期間最後一天。金額依障別自動帶入，也可以直接改。</div>
+    <div class="field" style="max-width:260px;margin-bottom:10px"><label for="d-ql">名冊、領據的「第___季」（空白＝${qLabelOf(periodQs(qStartIso(),qEndIso()))}）</label><input id="d-ql" data-d="qLabel" value="${esc(d.qLabel||'')}" placeholder="例：3-4"></div>
     <div class="tblwrap"><table class="ptbl"><thead><tr><th>姓名</th><th>身分證字號</th><th>出生</th><th>收托日期</th><th>送托起</th><th>送托迄</th><th>月數</th><th>通報日期</th><th>證明文件</th><th>障別</th><th>托育服務費</th><th>照顧費</th><th>托育人員</th><th></th></tr></thead><tbody>
     ${d.kids.length?d.kids.map((k,i)=>`<tr>
       <td><input id="dk-name-${i}" data-dk="name" data-i="${i}" value="${esc(k.name||'')}" style="width:70px"></td>
@@ -1438,13 +1470,13 @@ function pageDisRoster(d,p,annual){
   const col=W.map(w=>(w/15*f*0.999).toFixed(1));
   const T=disTotals(d), aT=d.kids.reduce((a,k)=>a+annFee(k),0);
   const n=Math.max(4,d.kids.length), fs=13, sm=10.5;
-  const ql=d.qLabel||String(DIS.q);
+  const ql=disQL(d);
   const rows=Array.from({length:n},(_,i)=>{ const k=d.kids[i];
     if(!k) return `<tr style="height:26px"><td class="c">${i<2?i+1:''}</td>${'<td></td>'.repeat(W.length-1)}</tr>`;
     const common=`<td class="c">${i+1}</td><td class="c">${esc(k.name)}</td><td class="c">${esc(k.idno)}</td><td class="c">${rocDot(k.birth)}</td><td class="c">${rocDot(k.enroll)}</td>`;
     return annual
       ? `<tr style="height:42px">${common}<td class="c">${rocDot(annFrom(k))}至<br>${rocDot(annTo())}</td><td class="c">${mStr(annMonths(k))}個月</td><td class="c">${k.report?rocDot(k.report):'無'}</td><td class="c">${n0(k.doc||1)}</td><td class="c">${fmtN(annFee(k))}</td><td></td></tr>`
-      : `<tr style="height:42px">${common}<td class="c">${esc(ql)}</td><td class="c">${rocDot(kidFrom(k))}至<br>${rocDot(kidTo(k))}</td><td class="c">${mStr(kidMonths(k))}</td><td class="c">${k.report?rocDot(k.report):'無'}</td><td class="c">${n0(k.doc||1)}</td><td class="c">${fmtN(kidFee(k))}</td><td class="c">${fmtN(kidCare(k))}</td><td></td></tr>`;
+      : `<tr style="height:42px">${common}<td class="c">${esc(ql)}</td><td class="c" style="font-size:11px;line-height:1.3">${rocDot(kidFrom(k))}至<br>${rocDot(kidTo(k))}</td><td class="c">${mStr(kidMonths(k))}</td><td class="c">${k.report?rocDot(k.report):'無'}</td><td class="c">${n0(k.doc||1)}</td><td class="c">${fmtN(kidFee(k))}</td><td class="c">${fmtN(kidCare(k))}</td><td></td></tr>`;
   }).join('');
   const unit=(p.unit||'').replace(/^臺南市/,'').replace(/托嬰中心$/,'');
   const notes=`填表注意事項：<br>1.&nbsp;&nbsp;請就實際收托狀況核實填寫。<br>2.&nbsp;&nbsp;特殊需求幼兒若經本市立案托嬰中心或已登記之居家式托育服務提供者通報至本市兒童早期發展服務管理中心，追溯自通報日起予以補助。<br>3.&nbsp;&nbsp;補助費之核算，每月以30日計算，滿15日以上以1個月計；未滿15日以半個月計。另每日收托未達6小時，以半日計。<br>4.&nbsp;&nbsp;檢附資料影本請加註「與正本相符」及主管人員印章。`;
@@ -1479,7 +1511,7 @@ function pageDisReceiptCenter(d,p,pb){
   const B='font-size:26.7px;line-height:53px;margin:0;font-weight:700', N='font-size:26.7px;line-height:44px;margin:0';
   return `<div class="pg p" style="padding:47px 66px 0 57px">
     <div style="text-align:center;font-size:34.7px;font-weight:700;line-height:66px">領據</div>
-    <p style="${B};text-indent:2em">茲收到臺南市政府社會局撥付 <u>&nbsp;${DIS.y}&nbsp;</u> 年度 <u>&nbsp;${DIS.q}&nbsp;</u> 季臺南市政府社會局補助托嬰中心及居家式托育服務提供者收托身心障礙暨疑似發展遲緩幼兒實施計畫—</p>
+    <p style="${B};text-indent:2em">茲收到臺南市政府社會局撥付 <u>&nbsp;${DIS.y}&nbsp;</u> 年度 <u>&nbsp;${esc(disQL(d))}&nbsp;</u> 季臺南市政府社會局補助托嬰中心及居家式托育服務提供者收托身心障礙暨疑似發展遲緩幼兒實施計畫—</p>
     <p style="${B}"><u>托嬰中心托育服務費，</u></p>
     <p style="font-size:26.7px;line-height:40px;margin:0">${disAmountLine(T.fee,cap)}</p>
     <div style="height:150px;display:flex;align-items:flex-end;justify-content:center;margin-top:4px">${pb?`<img src="${pb}" style="max-height:146px;max-width:420px;object-fit:contain">`:''}</div>
@@ -1499,7 +1531,7 @@ function pageDisReceiptCg(d,name,pb){
   const B='font-size:26.7px;line-height:53px;margin:0;font-weight:700', N='font-size:26.7px;line-height:44px;margin:0';
   return `<div class="pg p" style="padding:38px 66px 0 76px">
     <div style="text-align:center;font-size:33.3px;font-weight:700;line-height:66px">領據</div>
-    <p style="${B}">茲收到臺南市政府社會局撥付 <u>&nbsp;${DIS.y}&nbsp;</u> 年度 <u>&nbsp;${DIS.q}&nbsp;</u> 季臺南市政府社會局補助托嬰中心及居家式托育服務提供者收托身心障礙暨疑似發展遲緩幼兒實施計畫—<u>托嬰中心托育人員照顧費，</u></p>
+    <p style="${B}">茲收到臺南市政府社會局撥付 <u>&nbsp;${DIS.y}&nbsp;</u> 年度 <u>&nbsp;${esc(disQL(d))}&nbsp;</u> 季臺南市政府社會局補助托嬰中心及居家式托育服務提供者收托身心障礙暨疑似發展遲緩幼兒實施計畫—<u>托嬰中心托育人員照顧費，</u></p>
     <p style="font-size:26.7px;line-height:53px;margin:0">${disAmountLine(amt,cap)}</p>
     <div style="height:56px"></div>
     <p style="${N};font-weight:700">托嬰中心托育人員</p>
