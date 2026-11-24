@@ -374,6 +374,8 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 .mtask i{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-style:normal;font-size:11px}
 .mtask.done{opacity:.6}.mtask.done i{background:var(--teal);border-color:var(--teal);color:#fff}
 .mtask small{font-weight:500;color:var(--muted)}
+.pact{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 10px}
+.pact{gap:8px 16px}.pg2{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}.pact-l{font-size:12.5px;font-weight:700;color:var(--muted)}.pact .docbtn{padding:1px 10px;font-size:12.5px}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 
@@ -403,7 +405,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 20:54</div>
+<div class="ver" id="ver">版本 115/11/24 21:12</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -2457,10 +2459,11 @@ function viewCare(){
     <div class="form" style="margin-top:0;padding-top:0;border-top:0">
       <div class="field"><label for="c-b">發放哪一季</label><select id="c-b">${qs.map(([y,q])=>{ const [a,m]=payMonthOf(y,q); return `<option value="${y}-${q}" ${y===CARE.y&&q===CARE.q?'selected':''}>${y} 年 ${qRange(q)}（${a} 年 ${m} 月發）</option>`; }).join('')}</select></div>
       <div class="field"><label for="c-date">請領日期</label><input id="c-date" type="date" data-cb="date" value="${esc(b.date||isoOf(new Date(py+1911,pm-1,25)))}"></div>
-      ${canPrint?`<button class="btn" data-act="c-print">列印第 ${pageNo(CARE.q)} 頁</button>`:''}
-      <button class="btn ${canPrint?'ghost':''}" data-act="c-pdf" ${CARE.busy?'disabled':''}>${CARE.busy||`下載第 ${pageNo(CARE.q)} 頁 PDF`}</button>
-      ${canPrint?`<button class="btn ghost" data-act="c-printall">列印整年 4 頁</button>`:''}
-      <button class="btn ghost" data-act="c-pdfall" ${CARE.busy?'disabled':''}>下載整年 4 頁</button>
+
+    </div>
+    <div class="pact">${CARE.busy?`<span class="muted" style="font-size:13px">${CARE.busy}</span>`:''}
+      <span class="pg2"><span class="pact-l">第 ${pageNo(CARE.q)} 頁</span>${canPrint?`<button class="docbtn" data-act="c-print">列印</button>`:''}<button class="docbtn" data-act="c-pdf" ${CARE.busy?'disabled':''}>下載</button></span>
+      <span class="pg2"><span class="pact-l">整年 4 頁</span>${canPrint?`<button class="docbtn" data-act="c-printall">列印</button>`:''}<button class="docbtn" data-act="c-pdfall" ${CARE.busy?'disabled':''}>下載</button></span>
     </div>
     <div class="rlist">${rows.length?rows.map(x=>rowCard('c-pay',`data-id="${esc(x.r.id)}"`,`${esc(x.r.emp)}／${esc(x.r.kid)}`,
       `${x.ms.length?x.ms.join('、')+' 月':'不在期間內'}${x.amt!==x.def&&!x.skip?'・已手動改金額':''}`,
