@@ -292,7 +292,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 16:48</div>
+<div class="ver" id="ver">版本 115/11/24 16:54</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -306,6 +306,13 @@ const CH = {
 /* ───────── 中心 ───────── */
 const CENTER_ID = 'xbd'; // 每間中心一個獨立系統：xbd＝小布迪、bbn＝邦比諾
 const CENTERS = { xbd:{name:'小布迪', mascot:'budi'}, bbn:{name:'邦比諾', mascot:'sha'} };
+/* 成立日：成立前的事項、季別都不用做 */
+const FOUNDED = { xbd:'2026-06-01', bbn:'2026-10-01' };
+const foundedIso = () => FOUNDED[CENTER_ID] || '1900-01-01';
+const foundedDate = () => { const [y,m,d]=foundedIso().split('-').map(Number); return new Date(y,m-1,d); };
+const foundedRoc = () => foundedDate().getFullYear()-1911;
+const qEndDate = (y,q) => new Date(y+1911,q*3,0);
+const qOk = (y,q) => qEndDate(y,q) >= foundedDate();
 
 /* ───────── 年度固定事項（依兩份文件整理） ───────── */
 const GRANT_DOCS = ['申請表','領據','薪資清冊（社會局版本）＋托育人員 1 月匯款紀錄','核銷表（設施設備＝人數×2,000；營運補助）','預算表、絀結表','勞健保繳費單及名冊','勞退繳費單及名冊'];
@@ -331,6 +338,12 @@ TASKS.push(
   {id:'labor-12',m:12,title:'勞資會議',cat:'會議'}
 );
 const tasksOf = m => TASKS.filter(t=>t.m===m);
+/* 事項在成立後才要做：季報類看「申報的那一季」有沒有在成立後，其他看當月 */
+function taskActive(t,y){
+  const end = (/^(dis|opt)-/.test(t.id)) ? new Date(y+1911,t.m-1,0) : new Date(y+1911,t.m,0);
+  return end >= foundedDate();
+}
+const activeTasks = (m,y) => tasksOf(m).filter(t=>taskActive(t,y));
 
 /* 116 年行事曆的放假與活動 */
 const HOLIDAYS = {116:{
@@ -386,7 +399,7 @@ const fmtD = s => { const d=parseDate(s); return d?rocDate(d):''; };
 const parseDate = s => { if(!s) return null; const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); };
 
 /* ───────── 狀態 ───────── */
-const YEARS = [ROC_NOW, ROC_NOW+1];
+const YEARS = [ROC_NOW, ROC_NOW+1].filter(y=>y>=foundedRoc());
 if(!YEARS.includes(116)) YEARS.push(116);
 YEARS.sort();
 const DEFAULT_SETTINGS = {kids:0, op:1262000, disQ:1, dis:[]};
@@ -522,7 +535,7 @@ function upcoming(){
   const out=[];
   for(let k=0;k<3;k++){
     let m=M_NOW+k, y=ROC_NOW; if(m>12){m-=12;y++;}
-    tasksOf(m).forEach(t=>out.push({t,y,m,k}));
+    activeTasks(m,y).forEach(t=>out.push({t,y,m,k}));
   }
   return out;
 }
@@ -530,7 +543,7 @@ function overdue(){
   const out=[];
   for(let k=1;k<=2;k++){
     let m=M_NOW-k, y=ROC_NOW; if(m<1){m+=12;y--;}
-    tasksOf(m).forEach(t=>{ if(!(S.checks[y]||{})[t.id]) out.push({t,y,m}); });
+    activeTasks(m,y).forEach(t=>{ if(!(S.checks[y]||{})[t.id]) out.push({t,y,m}); });
   }
   return out;
 }
@@ -573,10 +586,10 @@ function viewHome(){
 
 function viewCalendar(){
   const y=S.year, hol=HOLIDAYS[y]||{};
-  const allDone=TASKS.filter(t=>(S.checks[y]||{})[t.id]).length;
+  const allT=TASKS.filter(t=>taskActive(t,y)), allDone=allT.filter(t=>(S.checks[y]||{})[t.id]).length;
   return `
   <section class="card">
-    <div class="sec-h" style="margin-bottom:6px"><h2>${y} 年行事曆</h2><span class="meta">已完成 <span class="num">${allDone}/${TASKS.length}</span> 件固定事項</span></div>
+    <div class="sec-h" style="margin-bottom:6px"><h2>${y} 年行事曆</h2><span class="meta">已完成 <span class="num">${allDone}/${allT.length}</span> 件固定事項</span></div>
     <div class="yearbar">
       <div class="seg" role="group" aria-label="選擇年度">${YEARS.map(Y=>`<button data-act="year" data-y="${Y}" aria-pressed="${Y===y}">${Y} 年</button>`).join('')}</div>
       <span class="muted" style="font-size:13px">${HOLIDAYS[y]?'放假日依 116 年行事曆':'這一年的放假日還沒提供，只列固定事項'}</span>
@@ -584,11 +597,11 @@ function viewCalendar(){
   </section>
   <div class="months">
     ${Array.from({length:12},(_,i)=>i+1).map(m=>{
-      const ts=tasksOf(m), h=hol[m]||[];
+      const ts=activeTasks(m,y), h=hol[m]||[], pre=new Date(y+1911,m,0)<foundedDate();
       const d=ts.filter(t=>(S.checks[y]||{})[t.id]).length;
       const isNow = y===ROC_NOW && m===M_NOW;
-      return `<section class="card month ${isNow?'now':''}" id="m-${m}">
-        <div class="mh"><div class="mnum">${m}</div><div><h3>${m} 月份${isNow?'・本月':''}</h3><div class="mp">${ts.length?`事項 ${d}/${ts.length}`:'沒有固定事項'}</div></div></div>
+      return `<section class="card month ${isNow?'now':''}" id="m-${m}" ${pre?'style="opacity:.55"':''}>
+        <div class="mh"><div class="mnum">${m}</div><div><h3>${m} 月份${isNow?'・本月':''}</h3><div class="mp">${pre?'中心尚未成立':ts.length?`事項 ${d}/${ts.length}`:'沒有固定事項'}</div></div></div>
         ${h.length?`<div class="hol">${h.map(([a,b])=>`<div><span class="d">${a}</span><span>${b}</span></div>`).join('')}</div>`:''}
         ${ts.map(t=>taskHTML(t,y,false)).join('')}
       </section>`;
@@ -741,12 +754,12 @@ const PROFILE_FIELDS=[
   ['license','立案字號','南市社兒字第○○號'],['taxId','統一編號',''],
   ['phone','聯絡電話',''],['address','地址','']
 ];
-const lastQ=()=>{ let q=Math.ceil(M_NOW/3)-1, y=ROC_NOW; if(q<1){q=4;y--;} return [y,q]; };
+const lastQ=()=>{ let q=Math.ceil(M_NOW/3)-1, y=ROC_NOW; if(q<1){q=4;y--;} if(!qOk(y,q)){ y=foundedRoc(); q=Math.ceil((foundedDate().getMonth()+1)/3); } return [y,q]; };
 const OPT={ y:lastQ()[0], q:lastQ()[1], d:null, exists:false, unsub:null, profile:{}, profUnsub:null,
   local:{}, busy:'', preview:false, assets:undefined, downloads:undefined, showProfile:false };
 const qMonths=q=>[q*3-2,q*3-1,q*3];
 /* 申請期間：預設整季，可自己改起迄（例如社會局准請到 11 月底） */
-function periodOf(y,q,d){ const s=(d&&d.pStart)||isoOf(new Date(y+1911,q*3-3,1)), e=(d&&d.pEnd)||isoOf(new Date(y+1911,q*3,0)); return [s,e]; }
+function periodOf(y,q,d){ const qs=new Date(y+1911,q*3-3,1), s=(d&&d.pStart)||isoOf(qs<foundedDate()?foundedDate():qs), e=(d&&d.pEnd)||isoOf(new Date(y+1911,q*3,0)); return [s,e]; }
 function periodQs(s,e){ const a=parseDate(s),b=parseDate(e); if(!a||!b) return []; const qa=Math.ceil((a.getMonth()+1)/3), qb=Math.ceil((b.getMonth()+1)/3)+(b.getFullYear()-a.getFullYear())*4; const r=[]; for(let q=qa;q<=qb;q++) r.push(((q-1)%4)+1); return r; }
 function periodMonths(s,e){ const a=parseDate(s),b=parseDate(e); if(!a||!b||b<a) return []; const r=[]; for(let y=a.getFullYear(),m=a.getMonth(); new Date(y,m,1)<=b; m++){ if(m>11){m=0;y++;} r.push(m+1); } return r; }
 const qLabelOf=qs=>qs.length>1?`${qs[0]}-${qs[qs.length-1]}`:String(qs[0]||'');
@@ -850,13 +863,13 @@ const slotFiles=k=>[...((OPT.d&&OPT.d.files[k])||[]),...(OPT.local[k]||[])];
 /* ── 畫面 ── */
 function viewOpt(){
   const d=OPT.d, p=OPT.profile;
-  const yrs=[ROC_NOW-1,ROC_NOW,ROC_NOW+1];
+  const yrs=[ROC_NOW-1,ROC_NOW,ROC_NOW+1].filter(y=>y>=foundedRoc());
   const head=`<section class="card">
     <div class="eyebrow">照顧比優化獎勵・每季</div>
     <div class="sec-h"><h2>優化補助申請</h2><span class="meta">${OPT.q===4?`隔年 1 月底前繳`:`${OPT.q*3+1} 月底前繳`}</span></div>
     <div class="form" style="margin-top:0;padding-top:0;border-top:0">
       <div class="field"><label for="o-y">年度</label><select id="o-y">${yrs.map(y=>`<option value="${y}" ${y===OPT.y?'selected':''}>${y} 年</option>`).join('')}</select></div>
-      <div class="field"><label for="o-q">季別</label><select id="o-q">${[1,2,3,4].map(q=>`<option value="${q}" ${q===OPT.q?'selected':''}>第 ${q} 季（${q*3-2}–${q*3} 月）</option>`).join('')}</select></div>
+      <div class="field"><label for="o-q">季別</label><select id="o-q">${[1,2,3,4].map(q=>`<option value="${q}" ${q===OPT.q?'selected':''} ${qOk(OPT.y,q)?'':'disabled'}>第 ${q} 季（${q*3-2}–${q*3} 月）</option>`).join('')}</select></div>
       <button class="btn" data-act="o-pdf" ${OPT.busy?'disabled':''}>${OPT.busy||'下載整份 PDF'}</button>
       <button class="btn ghost" data-act="o-preview">${OPT.preview?'收起預覽':'預覽表格'}</button>
       ${d?periodField('o',OPT.y,OPT.q,d):''}
@@ -1225,7 +1238,7 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('change',e=>{
   const el=e.target; if(!$('main').contains(el)||S.tab!=='opt') return;
-  if(el.id==='o-y'||el.id==='o-q'){ OPT.y=+$('o-y').value; OPT.q=+$('o-q').value; optSubscribe(); render(); return; }
+  if(el.id==='o-y'||el.id==='o-q'){ OPT.y=+$('o-y').value; OPT.q=+$('o-q').value; if(!qOk(OPT.y,OPT.q)){ OPT.q=[1,2,3,4].find(q=>qOk(OPT.y,q))||OPT.q; } optSubscribe(); render(); return; }
   if(el.id==='o-import'&&el.files[0]){ optImport(el.files[0]); el.value=''; return; }
   if(el.dataset.slot&&el.files.length){ optUpload(el.dataset.slot,[...el.files]); el.value=''; return; }
   const d=OPT.d; if(!d) return;
@@ -1350,13 +1363,13 @@ async function imgUrl(ref){
 
 /* ── 畫面 ── */
 function viewDis(){
-  const d=DIS.d, p=OPT.profile, yrs=[ROC_NOW-1,ROC_NOW,ROC_NOW+1], dir=staffDir();
+  const d=DIS.d, p=OPT.profile, yrs=[ROC_NOW-1,ROC_NOW,ROC_NOW+1].filter(y=>y>=foundedRoc()), dir=staffDir();
   const head=`<section class="card">
     <div class="eyebrow">收托身障暨疑似發展遲緩幼兒・每季</div>
     <div class="sec-h"><h2>身障補助申請</h2><span class="meta">${DIS.q===4?'隔年 1 月底前繳':`${DIS.q*3+1} 月底前繳`}</span></div>
     <div class="form" style="margin-top:0;padding-top:0;border-top:0">
       <div class="field"><label for="d-y">年度</label><select id="d-y">${yrs.map(y=>`<option value="${y}" ${y===DIS.y?'selected':''}>${y} 年</option>`).join('')}</select></div>
-      <div class="field"><label for="d-qq">季別</label><select id="d-qq">${[1,2,3,4].map(q=>`<option value="${q}" ${q===DIS.q?'selected':''}>第 ${q} 季（${q*3-2}–${q*3} 月）</option>`).join('')}</select></div>
+      <div class="field"><label for="d-qq">季別</label><select id="d-qq">${[1,2,3,4].map(q=>`<option value="${q}" ${q===DIS.q?'selected':''} ${qOk(DIS.y,q)?'':'disabled'}>第 ${q} 季（${q*3-2}–${q*3} 月）</option>`).join('')}</select></div>
       <button class="btn" data-act="d-pdf" ${DIS.busy?'disabled':''}>${DIS.busy||'下載整份 PDF'}</button>
       <button class="btn ghost" data-act="d-preview">${DIS.preview?'收起預覽':'預覽表格'}</button>
       ${DIS.d?periodField('d',DIS.y,DIS.q,DIS.d):''}
@@ -1616,7 +1629,7 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('change',e=>{
   const el=e.target; if(S.tab!=='dis'||!$('main').contains(el)) return;
-  if(el.id==='d-y'||el.id==='d-qq'){ DIS.y=+$('d-y').value; DIS.q=+$('d-qq').value; disSubscribe(); disLoadPrev(); render(); return; }
+  if(el.id==='d-y'||el.id==='d-qq'){ DIS.y=+$('d-y').value; DIS.q=+$('d-qq').value; if(!qOk(DIS.y,DIS.q)){ DIS.q=[1,2,3,4].find(q=>qOk(DIS.y,q))||DIS.q; } disSubscribe(); disLoadPrev(); render(); return; }
   if(el.dataset.dslot&&el.files.length){ disUpload(el.dataset.dslot,[...el.files]); el.value=''; return; }
   if(el.dataset.pb!==undefined&&el.files[0]){ passbookUpload(el.dataset.pb,el.files[0]); el.value=''; return; }
   const d=DIS.d; if(!d) return;
