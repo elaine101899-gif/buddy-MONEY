@@ -368,6 +368,12 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 .rc-m{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.rc-m b{font-size:15.5px;overflow-wrap:anywhere}.rc-m>span{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
 .rc-r{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-family:var(--f-num);font-weight:800;white-space:nowrap}
 .rc-go{font-size:22px;color:var(--muted);flex:none}
+.mtasks{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px;padding:8px 10px;border-radius:12px;background:var(--soft)}
+.mtasks>b{font-size:13.5px;margin-right:4px}
+.mtask{display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 4px;border:2px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);text-decoration:none;font-size:13px;font-weight:700}
+.mtask i{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-style:normal;font-size:11px}
+.mtask.done{opacity:.6}.mtask.done i{background:var(--teal);border-color:var(--teal);color:#fff}
+.mtask small{font-weight:500;color:var(--muted)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 
@@ -397,7 +403,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 20:32</div>
+<div class="ver" id="ver">版本 115/11/24 20:37</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -2022,6 +2028,18 @@ function visitForm(){
       ${v.id?(VIS.confirm===v.id?`<span style="align-self:center;font-weight:700">確定刪除？</span><button class="btn danger" type="button" data-act="v-delyes">刪除</button>`:`<button class="btn ghost" type="button" data-act="v-delask" style="margin-left:auto">刪除</button>`):''}
     </div></form>`;
 }
+function monthTasks(){
+  const m0=VIS.month, y=m0.getFullYear()-1911, m=m0.getMonth()+1;
+  const ts=activeTasks(m,y).filter(t=>!t.custom);
+  if(!ts.length) return '';
+  const link=t=>{ if(t.care){ const cy=t.care===1?y+1:y; return `href="#care" data-act="gocare" data-y="${cy}" data-q="${typeof t.care==='number'?t.care:''}"`; }
+    if(/^opt-/.test(t.id)){ const q=t.m===1?4:(t.m-1)/3; return `href="#opt" data-act="goopt" data-y="${t.m===1?y-1:y}" data-q="${q}"`; }
+    if(/^dis-/.test(t.id)){ const q=t.m===1?4:(t.m-1)/3; return `href="#dis" data-act="godis" data-y="${t.m===1?y-1:y}" data-q="${q}"`; }
+    if(t.calc==='p1'||t.calc==='p2') return `href="#fac" data-act="gofac" data-y="${y}" data-s="${t.calc==='p1'?1:2}"`;
+    return 'href="#calendar"'; };
+  return `<div class="mtasks"><b>${m} 月要做的事</b>${ts.map(t=>{ const done=isDone(t,y), na=naTask(t);
+    return `<a class="mtask ${done?'done':''}" ${link(t)}><i>${done?'✓':''}</i>${t.title}${na?'<small>不用申請</small>':''}</a>`; }).join('')}</div>`;
+}
 function viewVisit(){
   const all=S.visits||[], vis=all.filter(v=>vKind(v)==='visit');
   const m0=VIS.month, ym=isoOf(m0).slice(0,7);
@@ -2048,6 +2066,7 @@ function viewVisit(){
         <label class="btn ghost sm" style="cursor:pointer">匯入 Google 行事曆<input id="v-ics" type="file" accept=".ics,text/calendar" hidden></label>
       </div>
     </div>
+    ${monthTasks()}
     <p class="muted" style="font-size:12.5px;margin:0 0 8px">${VIS.mode==='list'?'點行程可以編輯、改狀態。':'點日子看那天的行程；點行程可以編輯。'}<span class="lg k-visit"></span>參觀 <span class="lg k-reg"></span>註冊 <span class="lg k-event"></span>其他</p>
     ${VIS.mode==='list'?agendaList():monthGrid()+dayPanel()}
     <details style="margin-top:10px"><summary class="muted" style="cursor:pointer;font-size:13.5px">怎麼從 Google 行事曆匯出？</summary>
