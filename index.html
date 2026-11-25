@@ -421,7 +421,7 @@ details.done-list summary{cursor:pointer;font-weight:700;color:var(--muted)}
 <main class="wrap" id="main"></main>
 <div class="toast" id="toast" role="status"></div>
 <div id="pdfstage" aria-hidden="true"></div>
-<div class="ver" id="ver">版本 115/11/24 22:38</div>
+<div class="ver" id="ver">版本 115/11/25 11:10</div>
 
 <script>
 /* ───────── 角色 SVG（取自小布迪角色設計） ───────── */
@@ -466,6 +466,8 @@ TASKS.push(
   {id:'drill-11',m:11,title:'消防演練',cat:'安全'},
   {id:'labor-12',m:12,title:'勞資會議',cat:'會議'}
 );
+/* 邦比諾：公共意外險、火險改到 7 月提醒 */
+if(CENTER_ID==='bbn'){ TASKS.forEach(t=>{ if(t.id==='insure-4'){ t.m=7; t.note='每年一次，7 月提醒'; } }); }
 /* 小布迪：下半年的消防安全檢修報告改在 11 月（上半年日期還沒定，先維持 4 月） */
 if(CENTER_ID==='xbd'){ TASKS.forEach(t=>{ if(t.id==='fire-9'){ t.m=11; t.note='每半年一次（上半年 4 月、下半年 11 月）'; } if(t.id==='fire-4') t.note='每半年一次（上半年 4 月、下半年 11 月）；上半年日期還沒確定'; }); }
 if(CENTER_ID==='xbd') TASKS.push(
